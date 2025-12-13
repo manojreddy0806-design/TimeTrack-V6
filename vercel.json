@@ -1,5 +1,6 @@
 {
   "version": 2,
+  "buildCommand": "cd landing && pnpm install && pnpm build",
   "builds": [
     {
       "src": "api/index.py",
