@@ -28,7 +28,8 @@ coverage.xml
 *~
 .DS_Store
 uploads/
-# Landing page - exclude source files, only include built dist if needed
+# Landing page - exclude source files, but INCLUDE built dist
+# Note: landing/dist/public must be built and committed for deployment
 landing/node_modules/
 landing/client/
 landing/server/
@@ -40,6 +41,7 @@ landing/pnpm-lock.yaml
 landing/tsconfig*.json
 landing/vite.config.ts
 landing/patches/
+# DO NOT exclude landing/dist/ - it contains the built landing page
 # Excel files
 *.xlsx
 *.xls

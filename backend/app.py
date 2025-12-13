@@ -238,6 +238,8 @@ def create_app():
     frontend_pages = project_root / "frontend" / "pages"
     frontend_static = project_root / "frontend" / "static"
     landing_dist = project_root / "landing" / "dist" / "public"
+    # Check if landing page exists (may not be available in serverless environments)
+    landing_exists = landing_dist.exists() and (landing_dist / "index.html").exists()
 
     # Serve login page at /login.html FIRST (before landing page)
     # This ensures login.html is served before React SPA can intercept
@@ -255,10 +257,14 @@ def create_app():
     def serve_page(page):
         return send_from_directory(frontend_pages, f"{page}.html")
     
-    # Serve landing page at root
+    # Serve landing page at root (if available, otherwise serve login)
     @app.get("/")
     def serve_landing():
-        return send_from_directory(landing_dist, "index.html")
+        if landing_exists:
+            return send_from_directory(landing_dist, "index.html")
+        else:
+            # Fallback to login page if landing page doesn't exist
+            return send_from_directory(frontend_pages, "login.html")
     
     # Keep index.html for backward compatibility (redirect to login)
     @app.get("/index.html")
@@ -284,10 +290,13 @@ def create_app():
     def serve_js(filename):
         return send_from_directory(frontend_static / "js", filename)
     
-    # Serve landing page static assets (images, etc.)
+    # Serve landing page static assets (images, etc.) - only if landing exists
     @app.get("/assets/<path:filename>")
     def serve_landing_assets(filename):
-        return send_from_directory(landing_dist / "assets", filename)
+        if landing_exists:
+            return send_from_directory(landing_dist / "assets", filename)
+        from flask import abort
+        abort(404)
     
     # Serve landing page public assets (images in public folder)
     @app.get("/<path:filename>")
@@ -298,9 +307,10 @@ def create_app():
             abort(404)
         
         # Check if it's a landing page asset (images like hero-bg.jpg, etc.)
-        landing_public_file = landing_dist / filename
-        if landing_public_file.exists() and landing_public_file.is_file():
-            return send_from_directory(landing_dist, filename)
+        if landing_exists:
+            landing_public_file = landing_dist / filename
+            if landing_public_file.exists() and landing_public_file.is_file():
+                return send_from_directory(landing_dist, filename)
         
         # Try frontend/pages for explicit HTML files (legacy pages like login.html, signup.html)
         if filename.endswith('.html'):
@@ -311,8 +321,11 @@ def create_app():
             return send_from_directory(frontend_static, filename[7:])  # Remove 'static/' prefix
         
         # Fallback to SPA index.html for client-side routed paths (e.g., /contact)
-        # This ensures the landing app handles routing via wouter.
-        return send_from_directory(landing_dist, "index.html")
+        # Only if landing page exists, otherwise return 404
+        if landing_exists:
+            return send_from_directory(landing_dist, "index.html")
+        from flask import abort
+        abort(404)
 
 
     # CLI command to seed default stores

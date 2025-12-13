@@ -61,7 +61,7 @@ uploads/
 
 # Node (for landing page)
 landing/node_modules/
-landing/dist/
+# landing/dist/ - NOT ignored, needed for Vercel deployment
 landing/.vite/
 
 # Testing
