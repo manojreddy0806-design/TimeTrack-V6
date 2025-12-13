@@ -233,14 +233,53 @@ def create_app():
                 })
             return jsonify({"routes": routes})
 
-    # Project root path
-    project_root = Path(__file__).resolve().parent.parent
+    # Project root path - handle both local and serverless environments
+    # In serverless (Vercel), files are in /var/task/, so we need to find the project root
+    _current_file = Path(__file__).resolve()
+    
+    # Try to find project root by looking for common markers
+    project_root = None
+    possible_roots = [
+        _current_file.parent.parent,  # Standard: backend/app.py -> root
+        Path("/var/task"),  # Vercel serverless
+        Path.cwd(),  # Current working directory
+    ]
+    
+    # Also try walking up from current file
+    test_path = _current_file.parent
+    for _ in range(5):  # Max 5 levels up
+        if (test_path / "backend" / "app.py").exists() or (test_path / "api" / "index.py").exists():
+            possible_roots.append(test_path)
+            break
+        test_path = test_path.parent
+    
+    # Find the first valid project root
+    for root in possible_roots:
+        if root.exists():
+            # Check if this looks like the project root
+            if (root / "backend" / "app.py").exists() or (root / "api" / "index.py").exists():
+                project_root = root
+                break
+    
+    # Fallback to standard resolution if nothing found
+    if project_root is None:
+        project_root = _current_file.parent.parent
+    
     frontend_pages = project_root / "frontend" / "pages"
     frontend_static = project_root / "frontend" / "static"
-    landing_dist = project_root / "landing" / "dist" / "public"
+    
+    # Use a mutable container for landing_dist so it can be updated if found at alternative path
+    landing_dist_container = {"path": project_root / "landing" / "dist" / "public"}
+    
+    # Debug: Log the resolved paths
+    print(f"DEBUG: Resolved paths - project_root: {project_root}")
+    print(f"DEBUG: frontend_pages exists: {frontend_pages.exists()}")
+    print(f"DEBUG: frontend_static exists: {frontend_static.exists()}")
+    print(f"DEBUG: landing_dist: {landing_dist_container['path']}")
     
     # Helper function to check if landing page exists (check dynamically)
     def landing_page_exists():
+        landing_dist = landing_dist_container["path"]
         exists = landing_dist.exists() and (landing_dist / "index.html").exists()
         if not exists:
             # Debug logging for serverless environments
@@ -250,7 +289,25 @@ def create_app():
                 print(f"DEBUG: Landing dist contents: {list(landing_dist.iterdir()) if landing_dist.is_dir() else 'not a directory'}")
                 index_file = landing_dist / "index.html"
                 print(f"DEBUG: index.html exists: {index_file.exists()}")
+            else:
+                # Try alternative paths
+                alt_paths = [
+                    project_root / "landing" / "dist" / "public",
+                    Path("/var/task/landing/dist/public"),
+                    Path("/var/task") / "landing" / "dist" / "public",
+                    Path.cwd() / "landing" / "dist" / "public",
+                ]
+                for alt_path in alt_paths:
+                    if alt_path.exists() and (alt_path / "index.html").exists():
+                        print(f"DEBUG: Found landing dist at alternative path: {alt_path}")
+                        # Update the container so future calls use the correct path
+                        landing_dist_container["path"] = alt_path
+                        return True
         return exists
+    
+    # Get the actual landing_dist path for use in routes
+    def get_landing_dist():
+        return landing_dist_container["path"]
 
     # Serve login page at /login.html FIRST (before landing page)
     # This ensures login.html is served before React SPA can intercept
@@ -272,7 +329,7 @@ def create_app():
     @app.get("/")
     def serve_landing():
         if landing_page_exists():
-            return send_from_directory(landing_dist, "index.html")
+            return send_from_directory(get_landing_dist(), "index.html")
         else:
             # Fallback to login page if landing page doesn't exist
             return send_from_directory(frontend_pages, "login.html")
@@ -299,13 +356,20 @@ def create_app():
     # Serve static JS files
     @app.get("/static/js/<path:filename>")
     def serve_js(filename):
+        js_file = frontend_static / "js" / filename
+        if not js_file.exists():
+            print(f"DEBUG: JS file not found - {js_file}")
+            print(f"DEBUG: frontend_static: {frontend_static}")
+            print(f"DEBUG: frontend_static exists: {frontend_static.exists()}")
+            if frontend_static.exists():
+                print(f"DEBUG: frontend_static contents: {list(frontend_static.iterdir()) if frontend_static.is_dir() else 'not a directory'}")
         return send_from_directory(frontend_static / "js", filename)
     
     # Serve landing page static assets (images, etc.) - only if landing exists
     @app.get("/assets/<path:filename>")
     def serve_landing_assets(filename):
         if landing_page_exists():
-            return send_from_directory(landing_dist / "assets", filename)
+            return send_from_directory(get_landing_dist() / "assets", filename)
         from flask import abort
         abort(404)
     
@@ -319,6 +383,7 @@ def create_app():
         
         # Check if it's a landing page asset (images like hero-bg.jpg, etc.)
         if landing_page_exists():
+            landing_dist = get_landing_dist()
             landing_public_file = landing_dist / filename
             if landing_public_file.exists() and landing_public_file.is_file():
                 return send_from_directory(landing_dist, filename)
@@ -334,7 +399,7 @@ def create_app():
         # Fallback to SPA index.html for client-side routed paths (e.g., /contact)
         # Only if landing page exists, otherwise return 404
         if landing_page_exists():
-            return send_from_directory(landing_dist, "index.html")
+            return send_from_directory(get_landing_dist(), "index.html")
         from flask import abort
         abort(404)
 
