@@ -1,4 +1,5 @@
 __pycache__/
+**/__pycache__/
 *.pyc
 *.pyo
 *.pyd
@@ -27,8 +28,27 @@ coverage.xml
 *~
 .DS_Store
 uploads/
+# Landing page - exclude source files, only include built dist if needed
 landing/node_modules/
-landing/dist/
+landing/client/
+landing/server/
+landing/shared/
+landing/src/
+landing/components.json
+landing/package.json
+landing/pnpm-lock.yaml
+landing/tsconfig*.json
+landing/vite.config.ts
+landing/patches/
+# Excel files
 *.xlsx
 *.xls
+# Documentation
+*.md
+DEPLOYMENT_CHECKLIST.md
+# Test files
+test/
+tests/
+*_test.py
+test_*.py
 

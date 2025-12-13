@@ -8,7 +8,12 @@ from typing import List, Dict, Optional, Tuple
 import base64
 from io import BytesIO
 from PIL import Image
-import cv2
+# Lazy import cv2 to reduce initial load time
+try:
+    import cv2
+    CV2_AVAILABLE = True
+except ImportError:
+    CV2_AVAILABLE = False
 
 
 def euclidean_distance(descriptor1: List[float], descriptor2: List[float]) -> float:
@@ -145,8 +150,9 @@ def decode_base64_image(base64_string: str) -> Optional[np.ndarray]:
         # Convert to numpy array
         image_array = np.array(image)
         
-        # Convert RGB to BGR for OpenCV if needed
-        if len(image_array.shape) == 3 and image_array.shape[2] == 3:
+        # Convert RGB to BGR for OpenCV if needed (only if cv2 is available)
+        # Note: This conversion may not be necessary for our use case
+        if CV2_AVAILABLE and len(image_array.shape) == 3 and image_array.shape[2] == 3:
             image_array = cv2.cvtColor(image_array, cv2.COLOR_RGB2BGR)
         
         return image_array
