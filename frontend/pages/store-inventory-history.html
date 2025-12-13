@@ -1,0 +1,778 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>Inventory History — TimeTrack</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>window.FontAwesomeConfig = { autoReplaceSvg: 'nest' };</script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/js/all.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="static/css/style.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                    },
+                    colors: {
+                        primary: {
+                            DEFAULT: '#3B82F6',
+                            hover: '#2563EB'
+                        },
+                        secondary: '#64748B',
+                        light: '#F8FAFC',
+                        'card-border': '#E2E8F0',
+                        'input-border': '#CBD5E1'
+                    }
+                }
+            }
+        };
+    </script>
+    <style>
+        .inventory-grid-container {
+            overflow-x: auto;
+            margin-top: 20px;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            border: 1px solid #e9ecef;
+        }
+        .inventory-grid-table {
+            width: 100%;
+            border-collapse: collapse;
+            min-width: 800px;
+        }
+        .inventory-grid-table th {
+            background: #f8f9fa;
+            padding: 12px;
+            text-align: center;
+            font-weight: 700;
+            color: #2c3e50;
+            border: 1px solid #dee2e6;
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }
+        .inventory-grid-table th.item-header {
+            text-align: left;
+            position: sticky;
+            left: 0;
+            background: #f8f9fa;
+            z-index: 11;
+        }
+        .inventory-grid-table td {
+            padding: 10px 12px;
+            text-align: center;
+            border: 1px solid #e9ecef;
+            color: #495057;
+        }
+        .inventory-grid-table td.item-cell {
+            text-align: left;
+            font-weight: 600;
+            color: #2c3e50;
+            position: sticky;
+            left: 0;
+            background: white;
+            z-index: 9;
+        }
+        .inventory-grid-table tbody tr:hover {
+            background: #f8f9fa;
+        }
+        .inventory-grid-table tbody tr.special-row {
+            background: #fff3cd;
+            font-weight: 700;
+        }
+        .inventory-grid-table tbody tr.special-row td.item-cell {
+            background: #fff3cd;
+        }
+        .empty-cell {
+            color: #adb5bd;
+        }
+        .device-type-section {
+            margin-bottom: 2rem;
+        }
+        .device-type-header {
+            background: #f8f9fa;
+            padding: 12px 16px;
+            font-weight: 700;
+            font-size: 1.1rem;
+            color: #2c3e50;
+            border: 1px solid #dee2e6;
+            border-bottom: none;
+        }
+        .device-type-header.discontinued {
+            background: #fff3cd;
+        }
+    </style>
+    <style>
+        ::-webkit-scrollbar { display: none; }
+        @keyframes fadeInPage {
+            from { opacity: 0; transform: translateY(8px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .page-fade-in {
+            animation: fadeInPage 0.6s ease forwards;
+        }
+    </style>
+</head>
+<body class="bg-light font-sans antialiased text-slate-800">
+    <div id="app-container" class="min-h-screen pb-12">
+        <header id="header" class="sticky top-0 z-50 w-full">
+            <div class="w-[95%] max-w-7xl mx-auto mt-4 bg-gradient-to-r from-blue-600 to-blue-700 backdrop-blur-xl rounded-2xl shadow-2xl border border-blue-400/30">
+                <div class="flex items-center justify-between px-10 py-4">
+                    <div class="flex items-center space-x-3">
+                        <div class="bg-white rounded-xl p-2.5 flex items-center justify-center hover:scale-110 transition-transform duration-200 shadow-lg">
+                            <i class="fa-solid fa-clock text-blue-600 text-xl"></i>
+                        </div>
+                        <span class="text-2xl font-bold text-white">TimeTrack</span>
+                    </div>
+                    <div class="flex items-center space-x-4">
+                        <nav class="hidden md:flex items-center space-x-3 bg-blue-700/20 px-3 py-2 rounded-xl backdrop-blur-sm">
+                            <a href="manager.html" class="relative z-10 flex items-center px-6 py-2.5 text-sm font-semibold text-blue-50 hover:text-white hover:bg-blue-400/50 rounded-lg transition-all duration-300 hover:scale-105 hover:shadow-lg transform">
+                                <i class="fa-solid fa-chart-pie mr-2"></i>
+                                Manager Dashboard
+                            </a>
+                        </nav>
+                        <a href="super-admin.html" id="backToSuperAdmin" class="hidden items-center px-4 py-2 text-sm font-semibold text-blue-50 hover:text-white hover:bg-blue-400/50 rounded-lg transition-all duration-300 mr-4">
+                            <i class="fa-solid fa-arrow-left mr-2"></i>
+                            Back to Super Admin
+                        </a>
+                        <button class="hidden md:flex items-center px-6 py-2.5 text-sm font-semibold text-blue-50 hover:text-white hover:bg-blue-400/50 rounded-lg transition-all duration-300 hover:scale-105 hover:shadow-lg transform border border-white/20" onclick="logoutApp()">
+                            <i class="fa-solid fa-arrow-right-from-bracket mr-2"></i>
+                            Logout
+                        </button>
+                        <button class="md:hidden text-white hover:text-blue-200 transition-colors duration-200">
+                            <i class="fa-solid fa-bars text-xl"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <main id="main-content" class="page-fade-in max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-24 pb-12">
+            <div id="inventory-history-section" class="bg-white rounded-2xl shadow-lg border border-card-border overflow-hidden">
+                <div id="inventory-history-header" class="px-8 py-5 border-b border-card-border flex justify-between items-center bg-slate-50/50">
+                    <div>
+                        <h2 id="storeTitle" class="text-2xl font-bold text-slate-800">Inventory History</h2>
+                        <p class="text-sm text-slate-500">Daily Inventory Snapshot by Device Type</p>
+                    </div>
+                    <div class="text-right">
+                        <h3 class="text-lg font-semibold text-primary mb-2">Inventory History</h3>
+                        <div class="flex items-center justify-end gap-3">
+                            <button id="prevPeriodBtn" class="p-2 rounded-lg bg-white border border-slate-300 hover:bg-slate-50 hover:border-primary transition-all duration-200 hover:scale-105" title="Previous 11 Days">
+                                <i class="fa-solid fa-chevron-left text-slate-700"></i>
+                            </button>
+                            <span id="periodRange" class="text-sm text-slate-600 font-medium min-w-[250px] text-center">Loading...</span>
+                            <button id="nextPeriodBtn" class="p-2 rounded-lg bg-white border border-slate-300 hover:bg-slate-50 hover:border-primary transition-all duration-200 hover:scale-105" title="Next 11 Days">
+                                <i class="fa-solid fa-chevron-right text-slate-700"></i>
+                            </button>
+                            <button id="downloadExcelBtn" class="ml-3 flex items-center gap-2 px-5 py-2.5 text-sm font-semibold text-white bg-emerald-600 rounded-lg hover:bg-emerald-700 hover:shadow-lg hover:scale-105 transition-all duration-200 shadow-sm">
+                                <i class="fa-solid fa-download"></i>
+                                Download Excel
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                <div id="inventory-table-container" class="p-6">
+                    <div id="loadingState" class="text-center py-12">
+                        <div class="inline-block animate-spin rounded-full h-12 w-12 border-4 border-blue-600 border-t-transparent mb-4"></div>
+                        <p class="text-slate-600">Loading inventory history...</p>
+                    </div>
+                    <div id="errorState" class="hidden text-center py-12">
+                        <i class="fa-solid fa-triangle-exclamation text-red-500 text-4xl mb-4"></i>
+                        <p class="text-red-600 font-semibold" id="errorMessage">Failed to load inventory history</p>
+                    </div>
+                    <div id="tableContent" class="hidden">
+                        <!-- Inventory grid will be rendered here -->
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+    
+    <script src="static/js/script.js"></script>
+    <script>
+        // Check session
+        const session = loadSession();
+        if (!session || (session.role !== 'manager' && session.role !== 'super-admin')) {
+            showError('Access denied. Manager or Super Admin login required.');
+            window.location = 'login.html';
+        }
+        
+        // Get store name and view_as from URL
+        const urlParams = new URLSearchParams(window.location.search);
+        const storeName = urlParams.get('store') || 'Store';
+        const viewAs = urlParams.get('view_as');
+        
+        // Show "Back to Super Admin" button only if user is super-admin AND view_as is present
+        const backToSuperAdmin = document.getElementById('backToSuperAdmin');
+        if (backToSuperAdmin) {
+            if (viewAs && session?.role === 'super-admin') {
+                backToSuperAdmin.classList.remove("hidden");
+                backToSuperAdmin.classList.add("md:flex");
+            } else {
+                backToSuperAdmin.classList.add("hidden");
+                backToSuperAdmin.classList.remove("md:flex");
+            }
+        }
+        
+        // Update title
+        document.getElementById('storeTitle').textContent = `Inventory History — ${storeName}`;
+        
+        let allSnapshots = [];
+        let currentPeriodStart = null;
+        let gridData = null;
+        const DAYS_PER_PERIOD = 11;
+        
+        // Initialize period to last 11 days (ending today)
+        function initPeriod() {
+            const today = new Date();
+            currentPeriodStart = new Date(today);
+            currentPeriodStart.setDate(today.getDate() - (DAYS_PER_PERIOD - 1)); // 11 days including today
+            currentPeriodStart.setHours(0, 0, 0, 0);
+        }
+        
+        // Update period to match latest snapshots after loading
+        function adjustPeriodToSnapshots() {
+            if (allSnapshots.length === 0) return;
+            
+            // Get the latest snapshot date
+            const latestSnapshot = allSnapshots[0];
+            const latestDate = new Date(latestSnapshot.snapshot_date);
+            
+            // Set period to end on the latest snapshot date
+            currentPeriodStart = new Date(latestDate);
+            currentPeriodStart.setDate(latestDate.getDate() - (DAYS_PER_PERIOD - 1));
+            currentPeriodStart.setHours(0, 0, 0, 0);
+            
+            updatePeriodRange();
+        }
+        
+        function getPeriodEnd() {
+            const periodEnd = new Date(currentPeriodStart);
+            periodEnd.setDate(currentPeriodStart.getDate() + (DAYS_PER_PERIOD - 1));
+            return periodEnd;
+        }
+        
+        function formatDate(date) {
+            return date.toISOString().split('T')[0];
+        }
+        
+        function formatDisplayDate(date) {
+            const d = new Date(date);
+            const day = String(d.getDate()).padStart(2, '0');
+            const month = d.toLocaleDateString('en-US', { month: 'short' });
+            return `${day}-${month}`;
+        }
+        
+        function updatePeriodRange() {
+            const periodEnd = getPeriodEnd();
+            const startStr = formatDisplayDate(currentPeriodStart);
+            const endStr = formatDisplayDate(periodEnd);
+            document.getElementById('periodRange').textContent = `${startStr} to ${endStr}`;
+        }
+        
+        // Normalize date to YYYY-MM-DD format
+        function normalizeDate(dateStr) {
+            if (!dateStr) return '';
+            // Handle ISO format dates (e.g., "2024-12-03T00:00:00" or "2024-12-03T00:00:00Z")
+            const match = String(dateStr).match(/^(\d{4}-\d{2}-\d{2})/);
+            if (match) {
+                return match[1];
+            }
+            // If it's a Date object, convert to YYYY-MM-DD
+            if (dateStr instanceof Date) {
+                return formatDate(dateStr);
+            }
+            return dateStr;
+        }
+        
+        // Get snapshots for current period
+        function getCurrentPeriodSnapshots() {
+            const startDate = formatDate(currentPeriodStart);
+            const endDate = formatDate(getPeriodEnd());
+            
+            console.log('Filtering snapshots for period:', startDate, 'to', endDate);
+            console.log('Total snapshots available:', allSnapshots.length);
+            
+            // Filter snapshots within the period
+            const periodSnapshots = allSnapshots.filter(snapshot => {
+                const snapshotDate = normalizeDate(snapshot.snapshot_date);
+                const inRange = snapshotDate >= startDate && snapshotDate <= endDate;
+                if (inRange) {
+                    console.log('Snapshot found in range:', snapshotDate, snapshot.snapshot_date);
+                }
+                return inRange;
+            });
+            
+            // If no snapshots in current period, try to get the latest 11 snapshots
+            if (periodSnapshots.length === 0 && allSnapshots.length > 0) {
+                console.log('No snapshots in current period, using latest 11 snapshots');
+                // Get the latest 11 snapshots (they're already sorted newest first)
+                const latestSnapshots = allSnapshots.slice(0, 11);
+                // Reverse to show oldest first
+                latestSnapshots.reverse();
+                
+                // Update the period to match the actual snapshot dates
+                if (latestSnapshots.length > 0) {
+                    const firstDate = new Date(latestSnapshots[0].snapshot_date);
+                    const lastDate = new Date(latestSnapshots[latestSnapshots.length - 1].snapshot_date);
+                    currentPeriodStart = new Date(firstDate);
+                    currentPeriodStart.setHours(0, 0, 0, 0);
+                    updatePeriodRange();
+                }
+                
+                return latestSnapshots;
+            }
+            
+            // Sort by date (oldest first for chronological display)
+            periodSnapshots.sort((a, b) => {
+                const dateA = new Date(a.snapshot_date);
+                const dateB = new Date(b.snapshot_date);
+                return dateA - dateB;
+            });
+            
+            console.log('Returning', periodSnapshots.length, 'snapshots for period');
+            return periodSnapshots;
+        }
+        
+        async function loadInventoryHistory() {
+            const loadingState = document.getElementById('loadingState');
+            const errorState = document.getElementById('errorState');
+            const tableContent = document.getElementById('tableContent');
+            const errorMessage = document.getElementById('errorMessage');
+            
+            loadingState.classList.remove('hidden');
+            errorState.classList.add('hidden');
+            tableContent.classList.add('hidden');
+            
+            try {
+                const session = loadSession();
+                const storeIdToUse = storeName || session?.storeId || 'Store';
+                
+                allSnapshots = await apiGet('/inventory/history', { store_id: storeIdToUse });
+                
+                if (allSnapshots.length === 0) {
+                    loadingState.classList.add('hidden');
+                    tableContent.innerHTML = '<div class="text-center py-12 text-slate-600">No inventory history found for this store.</div>';
+                    tableContent.classList.remove('hidden');
+                    return;
+                }
+                
+                // Sort by date (newest first)
+                allSnapshots.sort((a, b) => {
+                    const dateA = new Date(a.snapshot_date);
+                    const dateB = new Date(b.snapshot_date);
+                    return dateB - dateA;
+                });
+                
+                // Adjust period to match latest snapshots (only if period hasn't been manually set)
+                // This ensures we show the most recent data on initial load
+                if (allSnapshots.length > 0) {
+                    const latestSnapshot = allSnapshots[0];
+                    const latestDate = new Date(latestSnapshot.snapshot_date);
+                    const latestDateStr = formatDate(latestDate);
+                    const currentEndStr = formatDate(getPeriodEnd());
+                    
+                    // If current period doesn't include the latest snapshot, adjust it
+                    if (latestDateStr > currentEndStr) {
+                        adjustPeriodToSnapshots();
+                    }
+                }
+                
+                // Get snapshots for current period
+                const periodSnapshots = getCurrentPeriodSnapshots();
+                
+                if (periodSnapshots.length === 0) {
+                    loadingState.classList.add('hidden');
+                    tableContent.innerHTML = '<div class="text-center py-12 text-slate-600">No inventory data found for this period.</div>';
+                    tableContent.classList.remove('hidden');
+                    return;
+                }
+                
+                // Build grid data
+                gridData = buildInventoryGrid(periodSnapshots);
+                
+                // Render grid
+                renderInventoryGrid(gridData);
+                
+                loadingState.classList.add('hidden');
+                tableContent.classList.remove('hidden');
+                
+            } catch (error) {
+                console.error('Error loading inventory history:', error);
+                loadingState.classList.add('hidden');
+                errorState.classList.remove('hidden');
+                errorMessage.textContent = error.message || 'Failed to load inventory history data';
+            }
+        }
+        
+        
+        // Build inventory grid from snapshots
+        function buildInventoryGrid(snapshots) {
+            // Collect all unique items (SKU + Name combinations)
+            const itemMap = new Map();
+            
+            snapshots.forEach(snapshot => {
+                const items = snapshot.items || [];
+                items.forEach(item => {
+                    const key = `${item.sku || ''}|${item.name || ''}`;
+                    if (!itemMap.has(key)) {
+                        itemMap.set(key, {
+                            sku: item.sku || '',
+                            name: item.name || item.item_name || 'Unknown',
+                            device_type: item.device_type || 'metro',
+                            quantities: {}
+                        });
+                    }
+                });
+            });
+            
+            // Fill quantities for each date
+            snapshots.forEach(snapshot => {
+                const dateStr = normalizeDate(snapshot.snapshot_date);
+                const items = snapshot.items || [];
+                
+                items.forEach(item => {
+                    const key = `${item.sku || ''}|${item.name || ''}`;
+                    if (itemMap.has(key)) {
+                        itemMap.get(key).quantities[dateStr] = item.quantity || 0;
+                    }
+                });
+            });
+            
+            // Convert to array and sort by name
+            const items = Array.from(itemMap.values()).sort((a, b) => {
+                return (a.name || '').localeCompare(b.name || '');
+            });
+            
+            return {
+                items: items,
+                dates: snapshots.map(s => normalizeDate(s.snapshot_date))
+            };
+        }
+        
+        // Render inventory grid organized by device type
+        function renderInventoryGrid(data) {
+            const container = document.getElementById('tableContent');
+            
+            if (!data || !data.items || data.items.length === 0) {
+                container.innerHTML = '<div class="text-center py-12 text-slate-600">No inventory items found for this period.</div>';
+                return;
+            }
+            
+            // Group items by device type
+            const itemsByType = {
+                'metro': [],
+                'discontinued': [],
+                'unlocked': []
+            };
+            
+            data.items.forEach(item => {
+                const deviceType = item.device_type || 'metro';
+                if (itemsByType[deviceType]) {
+                    itemsByType[deviceType].push(item);
+                } else {
+                    itemsByType['metro'].push(item);
+                }
+            });
+            
+            // Format dates for display (DD-MMM format)
+            const dateHeaders = data.dates.map(dateStr => {
+                const date = new Date(dateStr + 'T00:00:00');
+                const day = String(date.getDate()).padStart(2, '0');
+                const month = date.toLocaleDateString('en-US', { month: 'short' });
+                return `${day}-${month}`;
+            });
+            
+            let html = '';
+            
+            // Device type names and headers
+            const deviceTypeConfig = [
+                { key: 'metro', name: 'Metro Devices', class: '' },
+                { key: 'discontinued', name: 'DISCONTINUED / EOL DEVICES', class: 'discontinued' },
+                { key: 'unlocked', name: 'Unlocked phones/NONUP', class: '' }
+            ];
+            
+            deviceTypeConfig.forEach(config => {
+                const items = itemsByType[config.key];
+                if (items.length === 0) return;
+                
+                // Calculate totals for this device type
+                const phonesTotal = {};
+                const simcardsTotal = {};
+                
+                data.dates.forEach(dateStr => {
+                    let phonesSum = 0;
+                    let simcardsSum = 0;
+                    
+                    items.forEach(item => {
+                        const qty = item.quantities[dateStr] || 0;
+                        const nameLower = (item.name || '').toLowerCase();
+                        if (nameLower.includes('sim') || nameLower.includes('simcard')) {
+                            simcardsSum += qty;
+                        } else {
+                            phonesSum += qty;
+                        }
+                    });
+                    
+                    phonesTotal[dateStr] = phonesSum;
+                    simcardsTotal[dateStr] = simcardsSum;
+                });
+                
+                html += `
+                    <div class="device-type-section">
+                        <div class="device-type-header ${config.class}">${config.name}</div>
+                        <div class="inventory-grid-container">
+                            <table class="inventory-grid-table">
+                                <thead>
+                                    <tr>
+                                        <th class="item-header">Item Name</th>
+                                        ${dateHeaders.map(header => `<th>${escapeHtml(header)}</th>`).join('')}
+                                    </tr>
+                                </thead>
+                                <tbody>
+                `;
+                
+                // Item rows
+                items.forEach(item => {
+                    html += '<tr>';
+                    html += `<td class="item-cell">${escapeHtml(item.name || 'Unknown')}</td>`;
+                    
+                    data.dates.forEach(dateStr => {
+                        const qty = item.quantities[dateStr];
+                        if (qty !== undefined) {
+                            html += `<td>${qty}</td>`;
+                        } else {
+                            html += `<td class="empty-cell">-</td>`;
+                        }
+                    });
+                    
+                    html += '</tr>';
+                });
+                
+                // Add phones row
+                html += '<tr class="special-row">';
+                html += `<td class="item-cell">phones</td>`;
+                data.dates.forEach(dateStr => {
+                    const qty = phonesTotal[dateStr] || 0;
+                    html += `<td>${qty}</td>`;
+                });
+                html += '</tr>';
+                
+                // Add simcards row
+                html += '<tr class="special-row">';
+                html += `<td class="item-cell">simcard</td>`;
+                data.dates.forEach(dateStr => {
+                    const qty = simcardsTotal[dateStr] || 0;
+                    html += `<td>${qty}</td>`;
+                });
+                html += '</tr>';
+                
+                html += `
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                `;
+            });
+            
+            container.innerHTML = html;
+        }
+        
+        // Download Excel
+        async function downloadInventoryExcel() {
+            console.log('Download Excel clicked, gridData:', gridData);
+            
+            if (!gridData || !gridData.items || gridData.items.length === 0) {
+                showWarning('No inventory data available to download.');
+                return;
+            }
+            
+            try {
+                console.log('Starting Excel download, items count:', gridData.items.length);
+                // Group items by device_type
+                const itemsByType = {
+                    'metro': [],
+                    'discontinued': [],
+                    'unlocked': []
+                };
+                
+                gridData.items.forEach(item => {
+                    const deviceType = item.device_type || 'metro';
+                    if (itemsByType[deviceType]) {
+                        itemsByType[deviceType].push(item);
+                    } else {
+                        itemsByType['metro'].push(item);
+                    }
+                });
+                
+                // Format dates for Excel (DD-MMM format)
+                const dateHeaders = gridData.dates.map(dateStr => {
+                    const date = new Date(dateStr + 'T00:00:00');
+                    const day = String(date.getDate()).padStart(2, '0');
+                    const month = date.toLocaleDateString('en-US', { month: 'short' });
+                    return `${day}-${month}`;
+                });
+                
+                // Create workbook
+                const wb = XLSX.utils.book_new();
+                
+                // Device type names for sheet titles
+                const deviceTypeNames = {
+                    'metro': 'Metro Devices',
+                    'discontinued': 'Discontinued Phones/EOL Phones',
+                    'unlocked': 'Unlocked phones/NONUP'
+                };
+                
+                // Function to sanitize sheet names (Excel doesn't allow : \ / ? * [ ])
+                function sanitizeSheetName(name) {
+                    // Replace invalid characters with space or dash
+                    return name.replace(/[:\\\/\?\*\[\]]/g, ' ').trim().substring(0, 31); // Excel max length is 31
+                }
+                
+                // Create a sheet for each device type
+                Object.keys(itemsByType).forEach(deviceType => {
+                    const items = itemsByType[deviceType];
+                    if (items.length === 0) return;
+                    
+                    const excelData = [];
+                    
+                    // Header row: Item Name + dates
+                    const headerRow = ['Item Name', ...dateHeaders];
+                    excelData.push(headerRow);
+                    
+                    // Item rows
+                    items.forEach(item => {
+                        const row = [item.name || 'Unknown'];
+                        gridData.dates.forEach(dateStr => {
+                            const qty = item.quantities[dateStr];
+                            row.push(qty !== undefined ? qty : '');
+                        });
+                        excelData.push(row);
+                    });
+                    
+                    // Calculate totals for phones and simcards in this category
+                    const phonesTotal = {};
+                    const simcardsTotal = {};
+                    
+                    gridData.dates.forEach(dateStr => {
+                        let phonesSum = 0;
+                        let simcardsSum = 0;
+                        
+                        items.forEach(item => {
+                            const qty = item.quantities[dateStr] || 0;
+                            const nameLower = (item.name || '').toLowerCase();
+                            if (nameLower.includes('sim') || nameLower.includes('simcard')) {
+                                simcardsSum += qty;
+                            } else {
+                                phonesSum += qty;
+                            }
+                        });
+                        
+                        phonesTotal[dateStr] = phonesSum;
+                        simcardsTotal[dateStr] = simcardsSum;
+                    });
+                    
+                    // Add phones row
+                    const phonesRow = ['phones', ...gridData.dates.map(dateStr => phonesTotal[dateStr] || 0)];
+                    excelData.push(phonesRow);
+                    
+                    // Add simcards row
+                    const simcardsRow = ['simcard', ...gridData.dates.map(dateStr => simcardsTotal[dateStr] || 0)];
+                    excelData.push(simcardsRow);
+                    
+                    // Create worksheet
+                    const ws = XLSX.utils.aoa_to_sheet(excelData);
+                    
+                    // Set column widths
+                    ws['!cols'] = [
+                        { wch: 30 }  // Item Name column
+                    ];
+                    // Add width for each date column
+                    gridData.dates.forEach(() => {
+                        ws['!cols'].push({ wch: 15 });
+                    });
+                    
+                    // Add worksheet to workbook with sanitized device type name
+                    const originalName = deviceTypeNames[deviceType] || deviceType;
+                    const sheetName = sanitizeSheetName(originalName);
+                    console.log('Creating sheet:', sheetName, '(original:', originalName, ')');
+                    XLSX.utils.book_append_sheet(wb, ws, sheetName);
+                });
+                
+                // Generate filename with date range
+                const safeStoreName = storeName.replace(/[^a-zA-Z0-9_-]/g, '_');
+                const startDate = formatDate(currentPeriodStart);
+                const endDate = formatDate(getPeriodEnd());
+                const filename = `${safeStoreName}_Inventory_${startDate}_to_${endDate}.xlsx`;
+                
+                // Check if workbook has any sheets
+                if (wb.SheetNames.length === 0) {
+                    showWarning('No data to export. Please ensure there are inventory items in the selected period.');
+                    return;
+                }
+                
+                // Download
+                XLSX.writeFile(wb, filename);
+                
+                console.log('Excel file downloaded successfully:', filename);
+                showSuccess('Inventory history downloaded successfully!');
+                
+            } catch (err) {
+                console.error('Failed to download Excel:', err);
+                console.error('Error details:', err.stack);
+                showError('Failed to download Excel file: ' + (err.message || 'Unknown error'));
+            }
+        }
+        
+        // Make functions global
+        window.downloadInventoryExcel = downloadInventoryExcel;
+        
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            initPeriod();
+            updatePeriodRange();
+            loadInventoryHistory();
+            
+            // Event listeners
+            document.getElementById('prevPeriodBtn').addEventListener('click', () => {
+                currentPeriodStart.setDate(currentPeriodStart.getDate() - DAYS_PER_PERIOD);
+                updatePeriodRange();
+                loadInventoryHistory();
+            });
+            
+            document.getElementById('nextPeriodBtn').addEventListener('click', () => {
+                const today = new Date();
+                today.setHours(23, 59, 59, 999);
+                const newPeriodEnd = new Date(currentPeriodStart);
+                newPeriodEnd.setDate(currentPeriodStart.getDate() + (DAYS_PER_PERIOD * 2 - 1));
+                
+                // Don't allow going beyond today
+                if (newPeriodEnd <= today) {
+                    currentPeriodStart.setDate(currentPeriodStart.getDate() + DAYS_PER_PERIOD);
+                    updatePeriodRange();
+                    loadInventoryHistory();
+                }
+            });
+            
+            // Download button event listener
+            const downloadBtn = document.getElementById('downloadExcelBtn');
+            if (downloadBtn) {
+                downloadBtn.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    console.log('Download button clicked');
+                    downloadInventoryExcel();
+                });
+            } else {
+                console.error('Download button not found!');
+            }
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cash Report — TimeTrack</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        window.FontAwesomeConfig = {
+            autoReplaceSvg: 'nest'
+        };
+    </script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/js/all.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="static/css/style.css">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                    },
+                    colors: {
+                        primary: {
+                            DEFAULT: '#3B82F6',
+                            hover: '#2563EB'
+                        },
+                        secondary: '#64748B',
+                        light: '#F8FAFC',
+                        'card-border': '#E2E8F0',
+                        'input-border': '#CBD5E1'
+                    }
+                }
+            }
+        };
+    </script>
+    <style>
+        ::-webkit-scrollbar { display: none; }
+        @keyframes fadeInPage {
+            from { opacity: 0; transform: translateY(8px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .page-fade-in {
+            animation: fadeInPage 0.6s ease forwards;
+        }
+        .cash-report-table th,
+        .cash-report-table td {
+            border: 1px solid #E2E8F0;
+        }
+        .cash-report-table th {
+            background-color: #F8FAFC;
+        }
+    </style>
+</head>
+<body class="bg-light font-sans antialiased text-slate-800">
+    <div id="app-container" class="min-h-screen pb-12">
+        <header id="header" class="sticky top-0 z-50 w-full">
+            <div class="w-[95%] max-w-7xl mx-auto mt-4 bg-gradient-to-r from-blue-600 to-blue-700 backdrop-blur-xl rounded-2xl shadow-2xl border border-blue-400/30">
+                <div class="flex items-center justify-between px-10 py-4">
+                    <div class="flex items-center space-x-3">
+                        <div class="bg-white rounded-xl p-2.5 flex items-center justify-center hover:scale-110 transition-transform duration-200 shadow-lg">
+                            <i class="fa-solid fa-clock text-blue-600 text-xl"></i>
+                        </div>
+                        <span class="text-2xl font-bold text-white">TimeTrack</span>
+                    </div>
+                    <div class="flex items-center space-x-4">
+                        <nav class="hidden md:flex items-center space-x-3 bg-blue-700/20 px-3 py-2 rounded-xl backdrop-blur-sm">
+                            <a href="super-admin.html" data-nav-link class="relative z-10 flex items-center px-6 py-2.5 text-sm font-semibold text-blue-50 hover:text-white hover:bg-blue-400/50 rounded-lg transition-all duration-300 hover:scale-105 hover:shadow-lg transform">
+                                <i class="fa-solid fa-chart-pie mr-2"></i>
+                                Dashboard
+                            </a>
+                            <a href="all-managers.html" data-nav-link class="relative z-10 flex items-center px-6 py-2.5 text-sm font-semibold text-blue-50 hover:text-white hover:bg-blue-400/50 rounded-lg transition-all duration-300 hover:scale-105 hover:shadow-lg transform">
+                                <i class="fa-solid fa-users mr-2"></i>
+                                All Managers
+                            </a>
+                            <a href="super-admin.html#subscription" class="relative z-10 flex items-center px-6 py-2.5 text-sm font-semibold text-blue-50 hover:text-white hover:bg-blue-400/50 rounded-lg transition-all duration-300 hover:scale-105 hover:shadow-lg transform">
+                                <i class="fa-solid fa-credit-card mr-2"></i>
+                                Subscription
+                            </a>
+                        </nav>
+                        <button class="hidden md:flex items-center px-6 py-2.5 text-sm font-semibold text-blue-50 hover:text-white hover:bg-blue-400/50 rounded-lg transition-all duration-300 hover:scale-105 hover:shadow-lg transform border border-white/20" onclick="logoutApp()">
+                            <i class="fa-solid fa-arrow-right-from-bracket mr-2"></i>
+                            Logout
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <main id="main-content" class="page-fade-in max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-24 pb-12">
+            <div id="cash-report-section" class="bg-white rounded-2xl shadow-lg border border-card-border overflow-hidden">
+                <div id="cash-report-header" class="px-8 py-5 border-b border-card-border flex justify-between items-center bg-slate-50/50">
+                    <div>
+                        <h2 id="tenant-name" class="text-2xl font-bold text-slate-800">Cash Report</h2>
+                        <p class="text-sm text-slate-500">Daily Cash Reconciliation by Store</p>
+                    </div>
+                    <div class="text-right">
+                        <h3 class="text-lg font-semibold text-primary mb-2">Cash Report</h3>
+                        <div class="flex items-center justify-end gap-3">
+                            <button id="prevWeekBtn" class="p-2 rounded-lg bg-white border border-slate-300 hover:bg-slate-50 hover:border-primary transition-all duration-200 hover:scale-105" title="Previous Week">
+                                <i class="fa-solid fa-chevron-left text-slate-700"></i>
+                            </button>
+                            <span id="weekRange" class="text-sm text-slate-600 font-medium min-w-[200px] text-center">Loading...</span>
+                            <button id="nextWeekBtn" class="p-2 rounded-lg bg-white border border-slate-300 hover:bg-slate-50 hover:border-primary transition-all duration-200 hover:scale-105" title="Next Week">
+                                <i class="fa-solid fa-chevron-right text-slate-700"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                <div id="cash-report-table-container" class="p-6">
+                    <div id="loadingState" class="text-center py-12">
+                        <div class="inline-block animate-spin rounded-full h-12 w-12 border-4 border-blue-600 border-t-transparent mb-4"></div>
+                        <p class="text-slate-600">Loading cash report data...</p>
+                    </div>
+                    <div id="errorState" class="hidden text-center py-12">
+                        <i class="fa-solid fa-triangle-exclamation text-red-500 text-4xl mb-4"></i>
+                        <p class="text-red-600 font-semibold" id="errorMessage">Failed to load cash report</p>
+                    </div>
+                    <div id="tableContent" class="hidden overflow-x-auto">
+                        <table class="w-full border-collapse cash-report-table">
+                            <thead>
+                                <tr>
+                                    <th class="px-4 py-3 text-left text-sm font-semibold text-slate-900 w-1/6">Date</th>
+                                    <!-- Store columns will be inserted here -->
+                                    <th class="px-4 py-3 text-center text-sm font-semibold text-slate-900 w-1/5">Total</th>
+                                </tr>
+                            </thead>
+                            <tbody id="cash-report-body">
+                                <!-- Data rows will be inserted here -->
+                            </tbody>
+                            <tfoot>
+                                <tr class="bg-slate-100">
+                                    <td colspan="100" class="px-4 py-4 text-right text-lg font-bold text-slate-900">Grand Total:</td>
+                                    <td class="px-4 py-4 text-right text-lg font-bold text-primary" id="grandTotal">$0.00</td>
+                                </tr>
+                            </tfoot>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script src="static/js/script.js"></script>
+    <script>
+        let currentWeekStart = null;
+        let reportData = null;
+        let stores = [];
+
+        // Initialize week to last 7 days (ending today)
+        function initWeek() {
+            const today = new Date();
+            currentWeekStart = new Date(today);
+            currentWeekStart.setDate(today.getDate() - 6); // 7 days including today
+            currentWeekStart.setHours(0, 0, 0, 0);
+        }
+
+        function getWeekEnd() {
+            const weekEnd = new Date(currentWeekStart);
+            weekEnd.setDate(currentWeekStart.getDate() + 6);
+            return weekEnd;
+        }
+
+        function formatDate(date) {
+            return date.toISOString().split('T')[0];
+        }
+
+        function formatDisplayDate(date) {
+            const d = new Date(date);
+            const day = String(d.getDate()).padStart(2, '0');
+            const month = String(d.getMonth() + 1).padStart(2, '0');
+            const year = d.getFullYear();
+            return `${day}-${month}-${year}`;
+        }
+
+        function updateWeekRange() {
+            const weekEnd = getWeekEnd();
+            const startStr = formatDisplayDate(currentWeekStart);
+            const endStr = formatDisplayDate(weekEnd);
+            document.getElementById('weekRange').textContent = `${startStr} to ${endStr}`;
+        }
+
+        function formatCurrency(amount) {
+            return new Intl.NumberFormat('en-US', {
+                style: 'currency',
+                currency: 'USD',
+                minimumFractionDigits: 2
+            }).format(amount);
+        }
+
+        async function loadCashReport() {
+            const loadingState = document.getElementById('loadingState');
+            const errorState = document.getElementById('errorState');
+            const tableContent = document.getElementById('tableContent');
+            const errorMessage = document.getElementById('errorMessage');
+
+            loadingState.classList.remove('hidden');
+            errorState.classList.add('hidden');
+            tableContent.classList.add('hidden');
+
+            try {
+                const startDate = formatDate(currentWeekStart);
+                const endDate = formatDate(getWeekEnd());
+
+                const data = await apiGet(`/eod/cash-report?start_date=${startDate}&end_date=${endDate}`);
+                
+                reportData = data.data;
+                stores = data.stores || [];
+
+                renderTable();
+                
+                loadingState.classList.add('hidden');
+                tableContent.classList.remove('hidden');
+            } catch (error) {
+                console.error('Error loading cash report:', error);
+                loadingState.classList.add('hidden');
+                errorState.classList.remove('hidden');
+                errorMessage.textContent = error.message || 'Failed to load cash report data';
+            }
+        }
+
+        function renderTable() {
+            const tbody = document.getElementById('cash-report-body');
+            const thead = document.querySelector('thead tr');
+            
+            // Clear existing store columns (keep Date and Total)
+            const existingStoreCols = thead.querySelectorAll('th.store-col');
+            existingStoreCols.forEach(col => col.remove());
+
+            // Add store columns
+            stores.forEach((store, index) => {
+                const th = document.createElement('th');
+                th.className = 'px-4 py-3 text-center text-sm font-semibold text-slate-900 store-col';
+                th.textContent = store;
+                thead.insertBefore(th, thead.lastElementChild);
+            });
+
+            // Update footer colspan
+            const footerTd = document.querySelector('tfoot tr td:first-child');
+            footerTd.setAttribute('colspan', stores.length + 1);
+
+            // Clear tbody
+            tbody.innerHTML = '';
+
+            // Generate dates for the week
+            const dates = [];
+            const currentDate = new Date(currentWeekStart);
+            for (let i = 0; i < 7; i++) {
+                dates.push(new Date(currentDate));
+                currentDate.setDate(currentDate.getDate() + 1);
+            }
+
+            let grandTotal = 0;
+
+            // Create rows for each date
+            dates.forEach(date => {
+                const dateStr = formatDate(date);
+                const displayDate = formatDisplayDate(dateStr);
+                
+                const tr = document.createElement('tr');
+                tr.className = 'hover:bg-blue-50/30';
+                
+                // Date cell
+                const dateTd = document.createElement('td');
+                dateTd.className = 'px-4 py-1 text-sm text-slate-700';
+                dateTd.textContent = displayDate;
+                tr.appendChild(dateTd);
+
+                // Store cells
+                let rowTotal = 0;
+                stores.forEach(store => {
+                    const storeData = reportData[dateStr]?.[store] || { cash_amount: 0, credit_amount: 0, qpay_amount: 0, total: 0 };
+                    const cashAmount = storeData.cash_amount || 0;
+                    rowTotal += cashAmount;
+
+                    const storeTd = document.createElement('td');
+                    storeTd.className = 'px-4 py-3 text-sm text-slate-800 text-right font-medium';
+                    storeTd.textContent = formatCurrency(cashAmount);
+                    tr.appendChild(storeTd);
+                });
+
+                // Total cell
+                const totalTd = document.createElement('td');
+                totalTd.className = 'px-4 py-3 text-sm text-slate-800 font-semibold text-right';
+                totalTd.textContent = formatCurrency(rowTotal);
+                tr.appendChild(totalTd);
+
+                grandTotal += rowTotal;
+                tbody.appendChild(tr);
+            });
+
+            // Update grand total
+            document.getElementById('grandTotal').textContent = formatCurrency(grandTotal);
+        }
+
+        // Event listeners
+        document.getElementById('prevWeekBtn').addEventListener('click', () => {
+            currentWeekStart.setDate(currentWeekStart.getDate() - 7);
+            updateWeekRange();
+            loadCashReport();
+        });
+
+        document.getElementById('nextWeekBtn').addEventListener('click', () => {
+            const today = new Date();
+            today.setHours(23, 59, 59, 999);
+            const newWeekEnd = new Date(currentWeekStart);
+            newWeekEnd.setDate(currentWeekStart.getDate() + 13); // Check if next week would go beyond today
+            
+            // Don't allow going beyond today
+            if (newWeekEnd <= today) {
+                currentWeekStart.setDate(currentWeekStart.getDate() + 7);
+                updateWeekRange();
+                loadCashReport();
+            }
+        });
+
+        // Initialize navigation active state
+        function initNavActiveState() {
+            const nav = document.querySelector('nav');
+            if (nav) {
+                // Remove all active classes first
+                const links = Array.from(nav.querySelectorAll('a[data-nav-link]'));
+                links.forEach(link => link.classList.remove('nav-link-active'));
+                
+                // Find and activate the current page link
+                const currentPath = window.location.pathname.split('/').pop() || 'cash-report.html';
+                const activeLink = links.find(link => {
+                    const href = link.getAttribute('href');
+                    const hrefPath = href.split('/').pop();
+                    return hrefPath === currentPath;
+                });
+                
+                // For cash-report, we don't have a nav-link, so we don't activate any
+                // But we ensure all links are properly styled
+            }
+        }
+        
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            initNavActiveState();
+            initWeek();
+            updateWeekRange();
+            loadCashReport();
+        });
+    </script>
+</body>
+</html>
+
