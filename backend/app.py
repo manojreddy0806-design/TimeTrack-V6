@@ -36,6 +36,8 @@ def create_app():
     from backend import models
     
     # Create all database tables
+    # For serverless functions, we should allow the app to start even if DB is unavailable
+    # The database connection will be attempted on first use
     with app.app_context():
         try:
             db.create_all()
@@ -44,7 +46,7 @@ def create_app():
             # Provide helpful error messages for common issues
             if "could not translate host name" in error_msg or "No such host is known" in error_msg:
                 print("\n" + "="*80)
-                print("DATABASE CONNECTION ERROR: Hostname cannot be resolved")
+                print("DATABASE CONNECTION WARNING: Hostname cannot be resolved")
                 print("="*80)
                 print(f"Error: {error_msg}")
                 print("\nThis usually means:")
@@ -54,21 +56,24 @@ def create_app():
                 print("   NOT: dpg-xxxxx-xxxxx-a")
                 print("3. Check your .env file or environment variables")
                 print("4. Verify the database is running and accessible")
+                print("\nNOTE: App will continue to start. Database will be connected on first use.")
                 print("="*80 + "\n")
             elif "SSL connection" in error_msg:
                 print("\n" + "="*80)
-                print("DATABASE SSL CONNECTION ERROR")
+                print("DATABASE SSL CONNECTION WARNING")
                 print("="*80)
                 print(f"Error: {error_msg}")
                 print("\nThis usually means:")
                 print("1. The database requires SSL but the connection failed")
                 print("2. Check your DATABASE_URL includes sslmode=require")
                 print("3. For Render.com: SSL is required")
+                print("\nNOTE: App will continue to start. Database will be connected on first use.")
                 print("="*80 + "\n")
             else:
-                print(f"\nWARNING: Database connection failed: {error_msg}\n")
-            # Re-raise the exception so the app doesn't start with a broken database
-            raise
+                print(f"\nWARNING: Database connection failed: {error_msg}")
+                print("NOTE: App will continue to start. Database will be connected on first use.\n")
+            # Don't re-raise - allow app to start and handle DB errors at request time
+            # This is important for serverless functions where DB might not be available at cold start
     
     # Initialize rate limiter
     # Don't apply default limits globally - only apply to specific routes that need protection
