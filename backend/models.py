@@ -443,7 +443,7 @@ def get_default_inventory_items():
         {"sku": "Samsung", "name": "Samsung S25FE", "device_type": "metro"},
         {"sku": "Samsung", "name": "Samsung Tab A9+", "device_type": "metro"},
         {"sku": "Samsung", "name": "Samsung watch", "device_type": "metro"},
-        
+  
         {"sku": "Moto", "name": "Moto Gplay 2026", "device_type": "metro"},
         {"sku": "Moto", "name": "Moto G 2025", "device_type": "metro"},
         {"sku": "Moto", "name": "Moto power 2025", "device_type": "metro"},
@@ -462,7 +462,7 @@ def get_default_inventory_items():
         {"sku": "Apple", "name": "iPhone 16 e", "device_type": "metro"},
         {"sku": "Apple", "name": "iPhone Air", "device_type": "metro"},
         {"sku": "Apple", "name": "Apple watch", "device_type": "metro"},
-        
+  
         {"sku": "Generic", "name": "HSI", "device_type": "metro"},
         {"sku": "Generic", "name": "EDGE 2025", "device_type": "metro"},
         {"sku": "Simcards", "name": "Simcards", "device_type": "metro"},
@@ -503,7 +503,7 @@ def get_default_inventory_items():
         {"sku": "Generic", "name": "PANDA", "device_type": "unlocked"},
         {"sku": "Generic", "name": "FUSION", "device_type": "unlocked"},
         {"sku": "Generic", "name": "EDGE", "device_type": "unlocked"},
-    ]
+]
 
 
 # ================== Tenant Functions ==================
