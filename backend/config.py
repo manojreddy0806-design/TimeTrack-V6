@@ -112,8 +112,16 @@ class Config:
     STRIPE_SECRET_KEY = STRIPE_SECRET_KEY
     
     # Upload directories
+    # Note: In serverless environments (like Vercel), the filesystem is read-only
+    # File uploads should be handled via cloud storage (S3, Cloudinary, etc.)
     UPLOAD_DIR = BASE_DIR / "uploads"
-    UPLOAD_DIR.mkdir(exist_ok=True)
+    # Only create directory if not in a read-only filesystem (serverless environment)
+    try:
+        UPLOAD_DIR.mkdir(exist_ok=True)
+    except (OSError, PermissionError):
+        # Serverless environment - directory creation not allowed
+        # File uploads should use cloud storage instead
+        pass
     
     # Note: Legacy YubiKey environment variables are ignored
     
