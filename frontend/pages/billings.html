@@ -41,6 +41,21 @@
         .page-fade-in {
             animation: fadeInPage 0.6s ease forwards;
         }
+        .cash-report-table th,
+        .cash-report-table td {
+            border: 1px solid #E2E8F0;
+        }
+        .cash-report-table th {
+            background-color: #F8FAFC;
+        }
+        .manager-card {
+            transition: all 0.2s ease;
+            cursor: pointer;
+        }
+        .manager-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+        }
     </style>
 </head>
 <body class="bg-light font-sans antialiased text-slate-800">
@@ -78,42 +93,275 @@
             </div>
         </header>
 
-        <main id="main-content" class="page-fade-in max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-32 pb-12">
-            <div class="bg-white rounded-2xl shadow-lg border border-card-border overflow-hidden p-12 text-center">
-                <div class="mb-6">
-                    <div class="w-20 h-20 rounded-full bg-purple-50 flex items-center justify-center mx-auto mb-4">
-                        <i class="fa-solid fa-file-invoice-dollar text-purple-600 text-3xl"></i>
+        <main id="main-content" class="page-fade-in max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-24 pb-12">
+            <!-- Managers List View -->
+            <div id="managersView" class="bg-white rounded-2xl shadow-lg border border-card-border overflow-hidden">
+                <div class="px-8 py-5 border-b border-card-border flex justify-between items-center bg-slate-50/50">
+                    <div>
+                        <h2 class="text-2xl font-bold text-slate-800">Manager Billings</h2>
+                        <p class="text-sm text-slate-500">View billing status by manager - <span id="currentMonthDisplay" class="font-semibold text-primary"></span></p>
                     </div>
-                    <h1 class="text-3xl font-bold text-slate-900 mb-2">Billings</h1>
-                    <p class="text-secondary text-lg">This feature will be available soon.</p>
+                    <button id="backToManagersBtn" class="hidden px-4 py-2 text-sm font-semibold text-white bg-primary rounded-lg hover:bg-primary-hover transition shadow-sm" onclick="showManagersList()">
+                        <i class="fa-solid fa-arrow-left mr-2"></i>
+                        Back to Managers
+                    </button>
                 </div>
-                <a href="super-admin.html" class="inline-flex items-center gap-2 px-6 py-3 text-sm font-semibold text-white bg-primary rounded-lg hover:bg-primary-hover transition shadow-sm">
-                    <i class="fa-solid fa-arrow-left"></i>
-                    Back to Dashboard
-                </a>
+                <div id="managersList" class="p-6">
+                    <div id="loadingState" class="text-center py-12">
+                        <div class="inline-block animate-spin rounded-full h-12 w-12 border-4 border-blue-600 border-t-transparent mb-4"></div>
+                        <p class="text-slate-600">Loading managers...</p>
+                    </div>
+                    <div id="errorState" class="hidden text-center py-12">
+                        <i class="fa-solid fa-triangle-exclamation text-red-500 text-4xl mb-4"></i>
+                        <p class="text-red-600 font-semibold" id="errorMessage">Failed to load managers</p>
+                    </div>
+                    <div id="managersGrid" class="hidden grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        <!-- Manager cards will be inserted here -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Manager Details View -->
+            <div id="managerDetailsView" class="hidden bg-white rounded-2xl shadow-lg border border-card-border overflow-hidden mt-6">
+                <div class="px-8 py-5 border-b border-card-border bg-slate-50/50 flex justify-between items-center">
+                    <div>
+                        <button onclick="showManagersList()" class="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-primary hover:text-primary-hover transition mb-2">
+                            <i class="fa-solid fa-arrow-left"></i>
+                            Back to Managers List
+                        </button>
+                        <h2 id="managerDetailsTitle" class="text-2xl font-bold text-slate-800">Manager Billings</h2>
+                    </div>
+                </div>
+                <div id="managerDetailsContent" class="p-6">
+                    <div id="detailsLoadingState" class="text-center py-12">
+                        <div class="inline-block animate-spin rounded-full h-12 w-12 border-4 border-blue-600 border-t-transparent mb-4"></div>
+                        <p class="text-slate-600">Loading billing details...</p>
+                    </div>
+                    <div id="detailsTableContent" class="hidden overflow-x-auto">
+                        <table class="w-full border-collapse cash-report-table">
+                            <thead>
+                                <tr>
+                                    <th class="px-4 py-3 text-left text-sm font-semibold text-slate-900">Store</th>
+                                    <th class="px-4 py-3 text-center text-sm font-semibold text-slate-900">Electricity Bill</th>
+                                    <th class="px-4 py-3 text-center text-sm font-semibold text-slate-900">WiFi Bill</th>
+                                    <th class="px-4 py-3 text-center text-sm font-semibold text-slate-900">Gas Bill</th>
+                                </tr>
+                            </thead>
+                            <tbody id="managerBillingsBody">
+                                <!-- Data rows will be inserted here -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
             </div>
         </main>
     </div>
     <script src="static/js/script.js"></script>
     <script>
-        // Initialize navigation active state
-        function initNavActiveState() {
-            const nav = document.querySelector('nav');
-            if (nav) {
-                // Remove all active classes first
-                const links = Array.from(nav.querySelectorAll('a[data-nav-link]'));
-                links.forEach(link => link.classList.remove('nav-link-active'));
+        let managersData = null;
+        let selectedManagerUsername = null;
+
+        function formatCurrency(amount) {
+            return new Intl.NumberFormat('en-US', {
+                style: 'currency',
+                currency: 'USD',
+                minimumFractionDigits: 2
+            }).format(amount);
+        }
+
+        async function loadManagers() {
+            const loadingState = document.getElementById('loadingState');
+            const errorState = document.getElementById('errorState');
+            const managersGrid = document.getElementById('managersGrid');
+            const errorMessage = document.getElementById('errorMessage');
+
+            loadingState.classList.remove('hidden');
+            errorState.classList.add('hidden');
+            managersGrid.classList.add('hidden');
+
+            try {
+                const data = await apiGet('/billings/managers');
+                managersData = data;
+                renderManagersList();
                 
-                // For billings, we don't have a nav-link, so we don't activate any
-                // But we ensure all links are properly styled
+                // Display current month
+                if (data.billing_month) {
+                    const monthDate = new Date(data.billing_month + '-01');
+                    const monthName = monthDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+                    document.getElementById('currentMonthDisplay').textContent = monthName;
+                }
+                
+                loadingState.classList.add('hidden');
+                managersGrid.classList.remove('hidden');
+            } catch (error) {
+                console.error('Error loading managers:', error);
+                loadingState.classList.add('hidden');
+                errorState.classList.remove('hidden');
+                errorMessage.textContent = error.message || 'Failed to load managers';
             }
         }
-        
-        // Initialize on page load
+
+        function renderManagersList() {
+            const managersGrid = document.getElementById('managersGrid');
+            managersGrid.innerHTML = '';
+
+            if (!managersData || !managersData.managers || managersData.managers.length === 0) {
+                managersGrid.innerHTML = '<div class="col-span-full text-center py-8 text-slate-500">No managers found</div>';
+                return;
+            }
+
+            managersData.managers.forEach(manager => {
+                const card = document.createElement('div');
+                card.className = 'manager-card bg-white border border-card-border rounded-xl p-6 hover:border-primary hover:shadow-md';
+                card.onclick = () => showManagerDetails(manager.username);
+                
+                const unpaidCount = manager.unpaid_bills_count || 0;
+                const paidAmount = manager.total_paid || 0;
+                const allPaid = unpaidCount === 0 && manager.stores_count > 0;
+                
+                card.innerHTML = `
+                    <div class="flex items-start justify-between mb-4">
+                        <div class="flex items-center space-x-3">
+                            <div class="w-12 h-12 rounded-full bg-blue-50 flex items-center justify-center">
+                                <i class="fa-solid fa-user-tie text-blue-600"></i>
+                            </div>
+                            <div>
+                                <h3 class="font-semibold text-slate-900">${escapeHtml(manager.name)}</h3>
+                                <p class="text-sm text-slate-500">${manager.stores_count} store(s)</p>
+                            </div>
+                        </div>
+                        <div class="text-right">
+                            ${allPaid 
+                                ? '<span class="px-2 py-1 text-xs font-semibold text-green-700 bg-green-50 rounded">All Paid</span>' 
+                                : `<span class="px-2 py-1 text-xs font-semibold text-orange-700 bg-orange-50 rounded">${unpaidCount} Unpaid</span>`
+                            }
+                        </div>
+                    </div>
+                    <div class="space-y-2 text-sm">
+                        <div class="flex justify-between">
+                            <span class="text-slate-600">Total Paid:</span>
+                            <span class="font-semibold text-green-600">${formatCurrency(paidAmount)}</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-slate-600">Unpaid Bills:</span>
+                            <span class="font-semibold ${unpaidCount > 0 ? 'text-orange-600' : 'text-green-600'}">${unpaidCount}</span>
+                        </div>
+                    </div>
+                    <div class="mt-4 pt-4 border-t border-card-border">
+                        <span class="text-sm text-primary font-medium">Click to view details →</span>
+                    </div>
+                `;
+                
+                managersGrid.appendChild(card);
+            });
+        }
+
+        async function showManagerDetails(managerUsername) {
+            selectedManagerUsername = managerUsername;
+            
+            const managersView = document.getElementById('managersView');
+            const managerDetailsView = document.getElementById('managerDetailsView');
+            const backBtn = document.getElementById('backToManagersBtn');
+            const detailsLoading = document.getElementById('detailsLoadingState');
+            const detailsTable = document.getElementById('detailsTableContent');
+            
+            managersView.classList.add('hidden');
+            managerDetailsView.classList.remove('hidden');
+            backBtn.classList.remove('hidden');
+            detailsLoading.classList.remove('hidden');
+            detailsTable.classList.add('hidden');
+
+            try {
+                const data = await apiGet(`/billings/manager/${encodeURIComponent(managerUsername)}`);
+                renderManagerDetails(data);
+                
+                document.getElementById('managerDetailsTitle').textContent = `${data.manager.name} - Store Billings`;
+                
+                detailsLoading.classList.add('hidden');
+                detailsTable.classList.remove('hidden');
+            } catch (error) {
+                console.error('Error loading manager details:', error);
+                detailsLoading.innerHTML = `
+                    <div class="text-center py-12">
+                        <i class="fa-solid fa-triangle-exclamation text-red-500 text-4xl mb-4"></i>
+                        <p class="text-red-600 font-semibold mb-4">${error.message || 'Failed to load billing details'}</p>
+                        <button onclick="showManagersList()" class="flex items-center gap-2 px-6 py-3 text-sm font-semibold text-white bg-primary rounded-lg hover:bg-primary-hover transition shadow-sm mx-auto">
+                            <i class="fa-solid fa-arrow-left"></i>
+                            Back to Managers List
+                        </button>
+                    </div>
+                `;
+            }
+        }
+
+        function renderManagerDetails(data) {
+            const tbody = document.getElementById('managerBillingsBody');
+            tbody.innerHTML = '';
+
+            if (!data.stores || data.stores.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="4" class="px-4 py-8 text-center text-slate-500">No stores found for this manager</td></tr>';
+                return;
+            }
+
+            data.stores.forEach(storeData => {
+                const tr = document.createElement('tr');
+                tr.className = 'hover:bg-blue-50/30';
+
+                // Store name cell
+                const storeTd = document.createElement('td');
+                storeTd.className = 'px-4 py-3 text-sm text-slate-800 font-medium';
+                storeTd.textContent = storeData.name;
+                tr.appendChild(storeTd);
+
+                // Bill type cells (electricity, wifi, gas)
+                ['electricity', 'wifi', 'gas'].forEach(billType => {
+                    const billTd = document.createElement('td');
+                    billTd.className = 'px-4 py-3 text-sm text-center';
+                    
+                    const billing = storeData.billing[billType] || {'paid': false, 'amount': 0};
+                    
+                    if (billing.paid) {
+                        // Show paid status with amount
+                        billTd.innerHTML = `<span class="text-green-600 font-semibold">Paid - ${formatCurrency(billing.amount)}</span>`;
+                    } else {
+                        // Show unpaid status
+                        billTd.innerHTML = '<span class="text-orange-600 font-semibold">Unpaid</span>';
+                    }
+                    
+                    tr.appendChild(billTd);
+                });
+
+                tbody.appendChild(tr);
+            });
+        }
+
+        function showManagersList() {
+            selectedManagerUsername = null;
+            
+            const managersView = document.getElementById('managersView');
+            const managerDetailsView = document.getElementById('managerDetailsView');
+            const backBtn = document.getElementById('backToManagersBtn');
+            
+            // Show managers view
+            managersView.classList.remove('hidden');
+            // Hide details view
+            managerDetailsView.classList.add('hidden');
+            // Hide the back button in the header (since it's in managersView header)
+            if (backBtn) {
+                backBtn.classList.add('hidden');
+            }
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // Initialize
         document.addEventListener('DOMContentLoaded', () => {
-            initNavActiveState();
+            loadManagers();
         });
     </script>
 </body>
 </html>
-

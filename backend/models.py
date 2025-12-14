@@ -405,6 +405,55 @@ class EOD(db.Model):
         }
 
 
+class StoreBilling(db.Model):
+    __tablename__ = 'store_billings'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey('tenants.id'), nullable=False, index=True)
+    store_id = db.Column(db.String(100), nullable=False, index=True)
+    bill_type = db.Column(db.String(50), nullable=False)  # 'electricity', 'wifi', 'gas'
+    billing_month = db.Column(db.String(7), nullable=False, index=True)  # Format: 'YYYY-MM' (e.g., '2024-01')
+    amount = db.Column(db.Float, nullable=False, default=0)
+    paid = db.Column(db.Boolean, default=False)
+    payment_date = db.Column(db.DateTime, nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    # Relationships
+    tenant = db.relationship('Tenant')
+    
+    # Composite unique constraint on tenant_id + store_id + bill_type + billing_month
+    __table_args__ = (
+        db.UniqueConstraint('tenant_id', 'store_id', 'bill_type', 'billing_month', name='uq_tenant_store_bill_type_month'),
+    )
+    
+    def to_dict(self):
+        payment_date_iso = self.payment_date.isoformat() if self.payment_date else None
+        if payment_date_iso and not payment_date_iso.endswith('Z') and self.payment_date and self.payment_date.tzinfo is None:
+            payment_date_iso += 'Z'
+        
+        created_at_iso = self.created_at.isoformat() if self.created_at else None
+        if created_at_iso and not created_at_iso.endswith('Z') and self.created_at.tzinfo is None:
+            created_at_iso += 'Z'
+        
+        updated_at_iso = self.updated_at.isoformat() if self.updated_at else None
+        if updated_at_iso and not updated_at_iso.endswith('Z') and self.updated_at.tzinfo is None:
+            updated_at_iso += 'Z'
+        
+        return {
+            'id': str(self.id),
+            'tenant_id': self.tenant_id,
+            'store_id': self.store_id,
+            'bill_type': self.bill_type,
+            'billing_month': self.billing_month,
+            'amount': self.amount,
+            'paid': self.paid,
+            'payment_date': payment_date_iso,
+            'created_at': created_at_iso,
+            'updated_at': updated_at_iso
+        }
+
+
 # ================== Helper Functions ==================
 
 def hash_password(password):
@@ -1185,6 +1234,115 @@ def get_eods(tenant_id=None, store_id=None):
         results.append(eod_dict)
     
     return results
+
+
+# ================== Billing Functions ==================
+
+def get_current_billing_month():
+    """Get current billing month in YYYY-MM format"""
+    return datetime.utcnow().strftime('%Y-%m')
+
+
+def get_store_billings(tenant_id=None, store_id=None, billing_month=None):
+    """Get store billings, optionally filtered by tenant_id, store_id, and/or billing_month"""
+    if billing_month is None:
+        billing_month = get_current_billing_month()
+    
+    query = StoreBilling.query.filter_by(billing_month=billing_month)
+    if tenant_id:
+        query = query.filter_by(tenant_id=tenant_id)
+    if store_id:
+        query = query.filter_by(store_id=store_id)
+    billings = query.order_by(StoreBilling.store_id, StoreBilling.bill_type).all()
+    return [b.to_dict() for b in billings]
+
+
+def get_billings_by_stores(tenant_id, billing_month=None):
+    """Get billings grouped by store for managers view (current month only)"""
+    if billing_month is None:
+        billing_month = get_current_billing_month()
+    
+    billings = StoreBilling.query.filter_by(
+        tenant_id=tenant_id,
+        billing_month=billing_month
+    ).all()
+    
+    # Group by store
+    store_billings = {}
+    for billing in billings:
+        store_id = billing.store_id
+        if store_id not in store_billings:
+            store_billings[store_id] = {
+                'electricity': {'paid': False, 'amount': 0},
+                'wifi': {'paid': False, 'amount': 0},
+                'gas': {'paid': False, 'amount': 0}
+            }
+        
+        bill_type = billing.bill_type.lower()
+        if bill_type in store_billings[store_id]:
+            store_billings[store_id][bill_type] = {
+                'paid': billing.paid,
+                'amount': float(billing.amount) if billing.paid else 0
+            }
+    
+    return store_billings
+
+
+def update_billing_payment(tenant_id, store_id, bill_type, amount, billing_month=None):
+    """Update or create a billing payment for a store (current month only)"""
+    if billing_month is None:
+        billing_month = get_current_billing_month()
+    
+    bill_type_lower = bill_type.lower()
+    if bill_type_lower not in ['electricity', 'wifi', 'gas']:
+        raise ValueError(f"Invalid bill type: {bill_type}")
+    
+    # Find existing billing for current month
+    billing = StoreBilling.query.filter_by(
+        tenant_id=tenant_id,
+        store_id=store_id,
+        bill_type=bill_type_lower,
+        billing_month=billing_month
+    ).first()
+    
+    if billing:
+        # Update existing billing
+        billing.amount = float(amount)
+        billing.paid = True
+        billing.payment_date = datetime.utcnow()
+    else:
+        # Create new billing for current month
+        billing = StoreBilling(
+            tenant_id=tenant_id,
+            store_id=store_id,
+            bill_type=bill_type_lower,
+            billing_month=billing_month,
+            amount=float(amount),
+            paid=True,
+            payment_date=datetime.utcnow()
+        )
+        db.session.add(billing)
+    
+    db.session.commit()
+    return billing.to_dict()
+
+
+def reset_monthly_billings(tenant_id, billing_month=None):
+    """
+    Reset/clear billings for a specific month (or current month if not specified).
+    This effectively deletes all billing records for that month.
+    Note: This is called automatically when accessing billings for a new month.
+    """
+    if billing_month is None:
+        billing_month = get_current_billing_month()
+    
+    # Delete all billings for the specified month and tenant
+    StoreBilling.query.filter_by(
+        tenant_id=tenant_id,
+        billing_month=billing_month
+    ).delete()
+    
+    db.session.commit()
 
 
 # ================== Deprecated/Legacy Functions ==================

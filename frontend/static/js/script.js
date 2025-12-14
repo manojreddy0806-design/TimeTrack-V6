@@ -1265,7 +1265,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         if (inventoryTableBody) {
           inventoryTableBody.innerHTML = `
             <tr>
-              <td colspan="${session?.role === 'manager' ? 5 : 4}" class="px-6 py-12 text-center">
+              <td colspan="4" class="px-6 py-12 text-center">
                 <div class="flex flex-col items-center justify-center">
                   <div class="inline-block animate-spin rounded-full h-10 w-10 border-4 border-blue-600 border-t-transparent mb-3"></div>
                   <p class="text-slate-600 font-medium">Loading inventory...</p>
@@ -1285,6 +1285,38 @@ document.addEventListener("DOMContentLoaded", async () => {
         console.log('Loading inventory with device_type:', deviceTypeToUse, 'for store:', session.storeId); // Debug log
         const items = await loadInventory(session.storeId, deviceTypeToUse);
         console.log('Loaded items count:', items.length, 'Items:', items.map(i => ({name: i.name, device_type: i.device_type}))); // Debug log
+        
+        // Load all 3 categories for totals calculation
+        const [metroItems, discontinuedItems, unlockedItems] = await Promise.all([
+          loadInventory(session.storeId, 'metro'),
+          loadInventory(session.storeId, 'discontinued'),
+          loadInventory(session.storeId, 'unlocked')
+        ]);
+        
+        // Calculate total devices from all 3 categories
+        let totalDevices = 0;
+        let totalSims = 0;
+        
+        const allItems = [...metroItems, ...discontinuedItems, ...unlockedItems];
+        allItems.forEach(item => {
+          const qty = item.quantity || 0;
+          const nameLower = (item.name || '').toLowerCase();
+          const skuLower = (item.sku || '').toLowerCase();
+          // Check both name and SKU for simcards
+          if (nameLower.includes('sim') || nameLower.includes('simcard') || 
+              skuLower.includes('sim') || skuLower.includes('simcard')) {
+            totalSims += qty;
+          } else {
+            totalDevices += qty;
+          }
+        });
+        
+        // Update totals in footer
+        const grandTotalStageEl = qs('grandTotalStage');
+        const grandTotalSimsEl = qs('grandTotalSims');
+        if (grandTotalStageEl) grandTotalStageEl.textContent = totalDevices;
+        if (grandTotalSimsEl) grandTotalSimsEl.textContent = totalSims;
+        
         if (!inventoryTableBody) return;
         
         let displayItems = items;
@@ -1300,24 +1332,12 @@ document.addEventListener("DOMContentLoaded", async () => {
         
         inventoryTableBody.innerHTML = "";
         
-        // Determine colspan based on role (5 columns for managers, 4 for employees)
-        const isManager = session?.role === 'manager';
-        const colSpan = isManager ? 5 : 4;
-        
         if (displayItems.length === 0) {
-          inventoryTableBody.innerHTML = `<tr><td colspan="${colSpan}" class="px-6 py-8 text-center text-slate-500">No inventory items found</td></tr>`;
+          inventoryTableBody.innerHTML = `<tr><td colspan="4" class="px-6 py-8 text-center text-slate-500">No inventory items found</td></tr>`;
           return;
         }
         
-        // Hide Actions column header for employees
-        const actionsHeader = document.querySelector('.inventory-table thead th:last-child');
-        if (actionsHeader && !isManager) {
-          actionsHeader.style.display = 'none';
-        } else if (actionsHeader && isManager) {
-          actionsHeader.style.display = '';
-        }
-        
-        // Calculate totals for phones and simcards
+        // Calculate totals for phones and simcards (for current view only - for summary rows)
         let phonesTotal = 0;
         let simcardsTotal = 0;
         
@@ -1336,36 +1356,16 @@ document.addEventListener("DOMContentLoaded", async () => {
         
         displayItems.forEach(item => {
           const tr = document.createElement("tr");
+          tr.className = "hover:bg-blue-50/30 transition-colors";
+          tr.style.backgroundColor = "#FEFCE8"; // Light yellow background
           const itemId = item._id || item.id || '';  // Use _id if available
-          // For employees: no action buttons. For managers: show all buttons.
-          const actionButtons = isManager 
-            ? `
-              <button class="inline-flex items-center justify-center gap-1.5 px-4 py-2 text-xs font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 hover:shadow-md hover:scale-105 transition-all duration-200 shadow-sm" onclick="handleUpdateInventoryItem('${escapeHtml(itemId)}', '${escapeHtml(item.sku || '')}')">
-                <i class="fa-solid fa-sync-alt text-xs"></i>
-                Update
-              </button>
-              <button class="inline-flex items-center justify-center gap-1.5 px-4 py-2 text-xs font-semibold text-slate-900 bg-amber-400 rounded-lg hover:bg-amber-500 hover:shadow-md hover:scale-105 transition-all duration-200 shadow-sm" onclick="handleEditInventoryItem('${escapeHtml(itemId)}', '${escapeHtml(item.sku || '')}', '${escapeHtml(item.name || '')}')">
-                <i class="fa-solid fa-edit text-xs"></i>
-                Edit
-              </button>
-              <button class="inline-flex items-center justify-center gap-1.5 px-4 py-2 text-xs font-semibold text-white bg-red-500 rounded-lg hover:bg-red-600 hover:shadow-md hover:scale-105 transition-all duration-200 shadow-sm" onclick="handleRemoveInventoryItem('${escapeHtml(item.sku || '')}', '${escapeHtml(item.name || '')}')">
-                <i class="fa-solid fa-trash text-xs"></i>
-                Remove
-              </button>
-            `
-            : ``;
           
-          // Build row HTML - include Actions cell only for managers
+          // Build row HTML - no Actions column
           const rowHTML = `
-            <td class="px-6 py-4 text-slate-900">${escapeHtml(item.name || '')}</td>
-            <td class="px-6 py-4 text-slate-700">${escapeHtml(item.sku || '')}</td>
-            <td class="px-6 py-4 text-center font-semibold text-slate-900">${item.quantity || 0}</td>
-            <td class="px-6 py-4 text-center"><input type="number" class="stage-input" value="${item.quantity || 0}" data-item-id="${escapeHtml(itemId)}" data-item-sku="${escapeHtml(item.sku || '')}" data-item-name="${escapeHtml(item.name || '')}" /></td>
-            ${isManager ? `<td class="px-6 py-4">
-              <div class="flex items-center justify-center gap-2 flex-wrap">
-                ${actionButtons}
-              </div>
-            </td>` : ''}
+            <td class="px-6 py-4 whitespace-nowrap text-sm text-slate-900">${escapeHtml(item.name || '')}</td>
+            <td class="px-6 py-4 whitespace-nowrap text-sm text-slate-600">${escapeHtml(item.sku || '')}</td>
+            <td class="px-6 py-4 whitespace-nowrap text-sm text-center text-slate-900 font-medium">${item.quantity || 0}</td>
+            <td class="px-6 py-4 whitespace-nowrap text-center"><input type="number" class="stage-input w-full px-3 py-2 border border-slate-300 rounded-md text-center bg-white" value="${item.quantity || 0}" data-item-id="${escapeHtml(itemId)}" data-item-sku="${escapeHtml(item.sku || '')}" data-item-name="${escapeHtml(item.name || '')}" /></td>
           `;
           tr.innerHTML = rowHTML;
           inventoryTableBody.appendChild(tr);
@@ -1381,7 +1381,6 @@ document.addEventListener("DOMContentLoaded", async () => {
           <td class="px-6 py-4">-</td>
           <td class="px-6 py-4 text-center"><strong>${phonesTotal}</strong></td>
           <td class="px-6 py-4 text-center">-</td>
-          ${isManager ? '<td class="px-6 py-4 text-center">-</td>' : ''}
         `;
         inventoryTableBody.appendChild(phonesRow);
         
@@ -1395,15 +1394,13 @@ document.addEventListener("DOMContentLoaded", async () => {
           <td class="px-6 py-4">-</td>
           <td class="px-6 py-4 text-center"><strong>${simcardsTotal}</strong></td>
           <td class="px-6 py-4 text-center">-</td>
-          ${isManager ? '<td class="px-6 py-4 text-center">-</td>' : ''}
         `;
         inventoryTableBody.appendChild(simcardsRow);
       } catch (e) {
         console.error("=== Inventory load failed ===", e);
         console.error("Error details:", e.message, e.stack);
         if (inventoryTableBody) {
-          const errorColSpan = session?.role === 'manager' ? 5 : 4;
-          inventoryTableBody.innerHTML = `<tr><td colspan="${errorColSpan}" class="px-6 py-8 text-center text-red-600 font-semibold">Failed to load inventory: ${e.message || 'Unknown error'}</td></tr>`;
+          inventoryTableBody.innerHTML = `<tr><td colspan="4" class="px-6 py-8 text-center text-red-600 font-semibold">Failed to load inventory: ${e.message || 'Unknown error'}</td></tr>`;
         }
       }
     }
@@ -1546,20 +1543,30 @@ document.addEventListener("DOMContentLoaded", async () => {
           await renderInventory();
           
           // Step 4: Create snapshot of the updated inventory
+          console.log('Creating snapshot for store:', session.storeId);
+          const now = new Date();
+          const dateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+          console.log('Snapshot date being sent:', dateStr);
+          
           const result = await createInventorySnapshot(session.storeId);
           console.log('Inventory snapshot result:', result);
           
           if (result && (result.message === "Snapshot created" || result.message === "Snapshot updated")) {
+            const returnedDate = result.snapshot_date || dateStr;
+            console.log('Snapshot created/updated successfully - Sent date:', dateStr, 'Returned date:', returnedDate);
             showSuccess("Inventory quantities updated and snapshot submitted successfully!", "Inventory Submitted");
             
             // If we're on the inventory history page, refresh it
             const path = window.location.pathname.split('/').pop();
             if (path === 'store-inventory-history.html' && typeof loadInventoryHistory === 'function') {
-              // Small delay to ensure backend has processed the snapshot
+              // Small delay to ensure backend has processed the snapshot, then reload
               setTimeout(() => {
-                console.log('Refreshing inventory history...');
+                console.log('Refreshing inventory history after snapshot submission...');
                 loadInventoryHistory();
-              }, 500);
+              }, 1000); // Increased delay to ensure snapshot is committed
+            } else if (path === 'inventory.html') {
+              // If on inventory.html, we might want to navigate to history or show a link
+              console.log('Snapshot created. Navigate to history page to view it.');
             } else {
               // If not on history page, suggest navigating to it
               console.log('Snapshot created. Navigate to history page to view it.');
@@ -1854,8 +1861,8 @@ document.addEventListener("DOMContentLoaded", async () => {
                     <span>Allowed IP: <strong class="text-slate-900">${allowedIp}</strong></span>
                   </div>
                 </div>
-                <button onclick="window.location='store-inventory.html?store=${encodeURIComponent(escapedName)}${navQuery}'" class="flex items-center gap-2 px-5 py-2.5 text-sm font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 hover:shadow-lg hover:scale-105 transition-all duration-200 shadow-sm">
-                  <i class="fa-solid fa-boxes"></i>
+                <button onclick="window.location='store-inventory.html?store=${encodeURIComponent(escapedName)}${navQuery}'" class="flex items-center gap-2 px-5 py-2.5 text-sm font-semibold text-slate-700 bg-slate-50 border border-slate-300 rounded-lg hover:bg-slate-100 hover:border-slate-400 transition-all duration-200">
+                  <i class="fa-solid fa-boxes text-slate-600"></i>
                   Manage Inventory
                 </button>
               </div>
@@ -1907,16 +1914,16 @@ document.addEventListener("DOMContentLoaded", async () => {
               </div>
             </div>
             <div class="bg-slate-50 px-6 py-4 border-t border-slate-200 flex flex-wrap items-center justify-center gap-3">
-              <button class="manage-store-btn flex items-center gap-2 px-6 py-2.5 text-sm font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 hover:shadow-lg hover:scale-105 transition-all duration-200 shadow-sm" data-store-name="${escapedName}" onclick="toggleStoreDetails('${escapedName}')">
-                <i class="fa-solid fa-chart-bar"></i>
+              <button class="manage-store-btn flex items-center gap-2 px-6 py-2.5 text-sm font-semibold text-slate-700 bg-slate-50 border border-slate-300 rounded-lg hover:bg-slate-100 hover:border-slate-400 transition-all duration-200" data-store-name="${escapedName}" onclick="toggleStoreDetails('${escapedName}')">
+                <i class="fa-solid fa-chart-bar text-slate-600"></i>
                 Manage Store
               </button>
-              <button class="btn-edit-store flex items-center gap-2 px-6 py-2.5 text-sm font-semibold text-slate-900 bg-amber-400 rounded-lg hover:bg-amber-500 hover:shadow-lg hover:scale-105 transition-all duration-200 shadow-sm" data-store-name="${escapedName}" data-store-boxes="${totalBoxes}" data-store-username="${escapeHtml(store.username || '')}" data-store-ip="${escapeHtml(store.allowed_ip || '')}">
-                <i class="fa-solid fa-edit"></i>
+              <button class="btn-edit-store flex items-center gap-2 px-6 py-2.5 text-sm font-semibold text-slate-700 bg-slate-50 border border-slate-300 rounded-lg hover:bg-slate-100 hover:border-slate-400 transition-all duration-200" data-store-name="${escapedName}" data-store-boxes="${totalBoxes}" data-store-username="${escapeHtml(store.username || '')}" data-store-ip="${escapeHtml(store.allowed_ip || '')}">
+                <i class="fa-solid fa-edit text-slate-600"></i>
                 Edit Store
               </button>
-              <button class="btn-remove-store flex items-center gap-2 px-6 py-2.5 text-sm font-semibold text-white bg-red-500 rounded-lg hover:bg-red-600 hover:shadow-lg hover:scale-105 transition-all duration-200 shadow-sm" data-store-name="${escapedName}">
-                <i class="fa-solid fa-trash"></i>
+              <button class="btn-remove-store flex items-center gap-2 px-6 py-2.5 text-sm font-semibold text-slate-700 bg-slate-50 border border-slate-300 rounded-lg hover:bg-slate-100 hover:border-slate-400 transition-all duration-200" data-store-name="${escapedName}">
+                <i class="fa-solid fa-trash text-slate-600"></i>
                 Remove Store
               </button>
             </div>
@@ -2714,6 +2721,37 @@ document.addEventListener("DOMContentLoaded", async () => {
         const items = await loadInventory(storeName, deviceTypeToUse);
         console.log('Loaded items count:', items.length, 'Items:', items.map(i => ({name: i.name, device_type: i.device_type})));
         
+        // Load all 3 categories for totals calculation
+        const [metroItems, discontinuedItems, unlockedItems] = await Promise.all([
+          loadInventory(storeName, 'metro'),
+          loadInventory(storeName, 'discontinued'),
+          loadInventory(storeName, 'unlocked')
+        ]);
+        
+        // Calculate total devices from all 3 categories
+        let totalDevices = 0;
+        let totalSims = 0;
+        
+        const allItems = [...metroItems, ...discontinuedItems, ...unlockedItems];
+        allItems.forEach(item => {
+          const qty = item.quantity || 0;
+          const nameLower = (item.name || '').toLowerCase();
+          const skuLower = (item.sku || '').toLowerCase();
+          // Check both name and SKU for simcards
+          if (nameLower.includes('sim') || nameLower.includes('simcard') || 
+              skuLower.includes('sim') || skuLower.includes('simcard')) {
+            totalSims += qty;
+          } else {
+            totalDevices += qty;
+          }
+        });
+        
+        // Update totals in footer
+        const grandTotalStage = qs("grandTotalStage");
+        const grandTotalSims = qs("grandTotalSims");
+        if (grandTotalStage) grandTotalStage.textContent = totalDevices;
+        if (grandTotalSims) grandTotalSims.textContent = totalSims;
+        
         if (!inventoryTableBody) return;
         
         let displayItems = items;
@@ -2733,7 +2771,7 @@ document.addEventListener("DOMContentLoaded", async () => {
           return;
         }
         
-        // Calculate totals for phones and simcards
+        // Calculate totals for phones and simcards (for current view only)
         let phonesTotal = 0;
         let simcardsTotal = 0;
         
@@ -2750,21 +2788,21 @@ document.addEventListener("DOMContentLoaded", async () => {
           }
         });
         
-        // Manager view: show all buttons (Update, Edit, Remove)
+        // Manager view: show Edit and Remove buttons only (light background)
         displayItems.forEach(item => {
           const tr = document.createElement("tr");
-          tr.className = "hover:bg-slate-50 transition-colors";
+          tr.className = "hover:bg-blue-50/30 transition-colors";
+          tr.style.backgroundColor = "#FEFCE8"; // Light yellow background
           const itemId = item._id || item.id || '';
           tr.innerHTML = `
             <td class="px-6 py-4 whitespace-nowrap text-sm text-slate-900">${escapeHtml(item.name || '')}</td>
             <td class="px-6 py-4 whitespace-nowrap text-sm text-slate-600">${escapeHtml(item.sku || '')}</td>
             <td class="px-6 py-4 whitespace-nowrap text-sm text-center text-slate-900 font-medium">${item.quantity || 0}</td>
-            <td class="px-6 py-4 whitespace-nowrap text-center"><input type="number" class="stage-input" value="${item.quantity || 0}" data-item-id="${escapeHtml(itemId)}" data-item-sku="${escapeHtml(item.sku || '')}" data-item-name="${escapeHtml(item.name || '')}" /></td>
+            <td class="px-6 py-4 whitespace-nowrap text-center"><input type="number" class="stage-input w-full px-3 py-2 border border-slate-300 rounded-md text-center bg-white" value="${item.quantity || 0}" data-item-id="${escapeHtml(itemId)}" data-item-sku="${escapeHtml(item.sku || '')}" data-item-name="${escapeHtml(item.name || '')}" /></td>
             <td class="px-6 py-4 whitespace-nowrap text-center">
               <div class="flex items-center justify-center gap-2">
-                <button class="stage-btn" onclick="handleUpdateInventoryItem('${escapeHtml(itemId)}', '${escapeHtml(item.sku || '')}')">Update</button>
-                <button class="stage-btn" onclick="handleEditInventoryItem('${escapeHtml(itemId)}', '${escapeHtml(item.sku || '')}', '${escapeHtml(item.name || '')}')" style="background:#ffc107;color:#000;">Edit</button>
-                <button class="stage-btn" onclick="handleRemoveInventoryItem('${escapeHtml(item.sku || '')}', '${escapeHtml(item.name || '')}')" style="background:#dc3545;">Remove</button>
+                <button onclick="handleEditInventoryItem('${escapeHtml(itemId)}', '${escapeHtml(item.sku || '')}', '${escapeHtml(item.name || '')}')" class="px-4 py-2 text-sm font-semibold rounded-md transition-all duration-200" style="background:#ffc107;color:#000;">Edit</button>
+                <button onclick="handleRemoveInventoryItem('${escapeHtml(item.sku || '')}', '${escapeHtml(item.name || '')}')" class="px-4 py-2 text-sm font-semibold text-white rounded-md transition-all duration-200" style="background:#dc3545;">Remove</button>
               </div>
             </td>
           `;
@@ -2806,25 +2844,44 @@ document.addEventListener("DOMContentLoaded", async () => {
       }
     };
     
-    // Update inventory item handler for manager
-    window.handleUpdateInventoryItem = async function(itemId, sku) {
-      let input = null;
-      if (itemId) {
-        input = document.querySelector(`input[data-item-id="${itemId}"]`);
-      }
-      if (!input && sku) {
-        input = document.querySelector(`input[data-item-sku="${sku}"]`);
-      }
-      if (!input) return;
-      
-      const newQuantity = parseInt(input.value) || 0;
-      
+    // Save Inventory button handler - stages all changes at once
+    window.handleSaveInventory = async function() {
       try {
-        await updateInventoryItem(storeName, sku, newQuantity, itemId);
+        // Collect all staged quantities from stage-input fields
+        const stageInputs = document.querySelectorAll('.stage-input');
+        const updates = [];
+        
+        for (const input of stageInputs) {
+          const itemId = input.getAttribute('data-item-id');
+          const sku = input.getAttribute('data-item-sku');
+          const stagedQuantity = parseInt(input.value) || 0;
+          
+          if (itemId && sku) {
+            updates.push({
+              itemId: itemId,
+              sku: sku,
+              quantity: stagedQuantity
+            });
+          }
+        }
+        
+        if (updates.length === 0) {
+          showSuccess("No changes to save.", "No Changes");
+          return;
+        }
+        
+        // Update all items in parallel
+        await Promise.all(updates.map(update => 
+          updateInventoryItem(storeName, update.sku, update.quantity, update.itemId)
+        ));
+        
+        // Refresh inventory display
         await renderInventory();
-        showSuccess("Inventory updated successfully!");
+        showSuccess(`Successfully saved ${updates.length} inventory item(s)!`, "Inventory Saved");
       } catch (e) {
-        showError("Failed to update inventory: " + (e.message || "Unknown error"));
+        console.error('Error saving inventory:', e);
+        const errorMsg = e.message || e.error || "Unknown error";
+        showError("Failed to save inventory: " + errorMsg);
       }
     };
     
@@ -2989,6 +3046,17 @@ document.addEventListener("DOMContentLoaded", async () => {
         e.preventDefault();
         if (typeof window.openAddItemModal === 'function') {
           window.openAddItemModal();
+        }
+      });
+    }
+    
+    // Save Inventory button handler
+    const saveInventoryBtn = qs("saveInventoryBtn");
+    if (saveInventoryBtn) {
+      saveInventoryBtn.addEventListener("click", (e) => {
+        e.preventDefault();
+        if (typeof window.handleSaveInventory === 'function') {
+          window.handleSaveInventory();
         }
       });
     }

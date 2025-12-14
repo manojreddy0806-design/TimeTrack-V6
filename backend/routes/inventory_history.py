@@ -1,6 +1,7 @@
 # backend/routes/inventory_history.py
 from flask import Blueprint, request, jsonify, g
-from datetime import datetime
+from datetime import datetime, date
+from sqlalchemy import func, cast, Date
 from backend.database import db
 from backend.models import Inventory, InventoryHistory
 from backend.auth import require_auth
@@ -21,6 +22,12 @@ def list_inventory_history():
     snapshots = InventoryHistory.query.filter_by(tenant_id=tenant_id, store_id=store_id).order_by(InventoryHistory.snapshot_date.desc()).all()
     
     print(f"Loading inventory history for store_id={store_id}, found {len(snapshots)} snapshots")
+    if snapshots:
+        latest_date = snapshots[0].snapshot_date.date() if snapshots[0].snapshot_date else None
+        print(f"Latest snapshot date: {latest_date}")
+        # Print all snapshot dates for debugging
+        all_dates = [s.snapshot_date.date() for s in snapshots if s.snapshot_date]
+        print(f"All snapshot dates: {all_dates}")
     
     return jsonify([snapshot.to_dict() for snapshot in snapshots])
 
@@ -101,7 +108,13 @@ def create_inventory_snapshot():
     print(f"Number of items to snapshot: {len(normalized_items)}")
     
     # Check if snapshot already exists for this tenant/store/date
-    existing = InventoryHistory.query.filter_by(tenant_id=tenant_id, store_id=store_id, snapshot_date=snapshot_dt).first()
+    # Compare by date only (ignore time component) to handle timezone differences
+    snapshot_date_only = snapshot_dt.date()
+    existing = InventoryHistory.query.filter(
+        InventoryHistory.tenant_id == tenant_id,
+        InventoryHistory.store_id == store_id,
+        func.date(InventoryHistory.snapshot_date) == snapshot_date_only
+    ).first()
     
     if existing:
         # Only allow updating today's snapshot - prevent editing past days
@@ -115,8 +128,8 @@ def create_inventory_snapshot():
         existing.updated_at = datetime.now()
         db.session.commit()
         
-        print(f"Snapshot updated: id={existing.id}")
-        return jsonify({"message": "Snapshot updated", "id": str(existing.id)}), 200
+        print(f"Snapshot updated: id={existing.id}, store_id={store_id}, date={snapshot_dt.date()}, items_count={len(normalized_items)}")
+        return jsonify({"message": "Snapshot updated", "id": str(existing.id), "snapshot_date": snapshot_dt.date().isoformat()}), 200
     else:
         # Prevent creating snapshots for past dates
         if snapshot_dt < today_dt:
@@ -135,5 +148,8 @@ def create_inventory_snapshot():
         db.session.add(snapshot)
         db.session.commit()
         
-        print(f"Snapshot created: id={snapshot.id}, store_id={store_id}, date={snapshot_dt.date()}, items_count={len(normalized_items)}")
-        return jsonify({"message": "Snapshot created", "id": str(snapshot.id)}), 201
+        # Refresh to get the committed snapshot
+        db.session.refresh(snapshot)
+        
+        print(f"Snapshot created: id={snapshot.id}, store_id={store_id}, date={snapshot_dt.date()}, stored_date={snapshot.snapshot_date.date() if snapshot.snapshot_date else 'None'}, items_count={len(normalized_items)}")
+        return jsonify({"message": "Snapshot created", "id": str(snapshot.id), "snapshot_date": snapshot_dt.date().isoformat()}), 201

@@ -34,6 +34,8 @@ def create_app():
     # Import models here to register them with SQLAlchemy before creating tables
     # This must happen after db.init_app() but before db.create_all()
     from backend import models
+    # Explicitly import StoreBilling to ensure it's registered with SQLAlchemy
+    from backend.models import StoreBilling  # noqa: F401
     
     # Create all database tables
     # For serverless functions, we should allow the app to start even if DB is unavailable
@@ -98,6 +100,7 @@ def create_app():
     from backend.routes.inventory_history import bp as inventory_history_bp
     from backend.routes.managers import bp as managers_bp
     from backend.routes.tenants import bp as tenants_bp
+    from backend.routes.billings import bp as billings_bp
 
     # Register error handlers BEFORE blueprints to ensure they catch all errors
     # Global error handler to ensure all API errors return JSON
@@ -155,6 +158,7 @@ def create_app():
     app.register_blueprint(stores_bp, url_prefix="/api/stores")
     app.register_blueprint(face_bp, url_prefix="/api/face")
     app.register_blueprint(managers_bp, url_prefix="/api/managers")
+    app.register_blueprint(billings_bp, url_prefix="/api/billings")
     
     # Apply rate limiting to login endpoints
     # Flask-Limiter will automatically apply rate limits based on decorators
@@ -267,50 +271,13 @@ def create_app():
     
     frontend_pages = project_root / "frontend" / "pages"
     frontend_static = project_root / "frontend" / "static"
-    
-    # Use a mutable container for landing_dist so it can be updated if found at alternative path
-    landing_dist_container = {"path": project_root / "landing" / "dist" / "public"}
-    
-    # Debug: Log the resolved paths
-    print(f"DEBUG: Resolved paths - project_root: {project_root}")
-    print(f"DEBUG: frontend_pages exists: {frontend_pages.exists()}")
-    print(f"DEBUG: frontend_static exists: {frontend_static.exists()}")
-    print(f"DEBUG: landing_dist: {landing_dist_container['path']}")
-    
-    # Helper function to check if landing page exists (check dynamically)
-    def landing_page_exists():
-        landing_dist = landing_dist_container["path"]
-        exists = landing_dist.exists() and (landing_dist / "index.html").exists()
-        if not exists:
-            # Debug logging for serverless environments
-            print(f"DEBUG: Landing page check - landing_dist: {landing_dist}")
-            print(f"DEBUG: Landing dist exists: {landing_dist.exists()}")
-            if landing_dist.exists():
-                print(f"DEBUG: Landing dist contents: {list(landing_dist.iterdir()) if landing_dist.is_dir() else 'not a directory'}")
-                index_file = landing_dist / "index.html"
-                print(f"DEBUG: index.html exists: {index_file.exists()}")
-            else:
-                # Try alternative paths
-                alt_paths = [
-                    project_root / "landing" / "dist" / "public",
-                    Path("/var/task/landing/dist/public"),
-                    Path("/var/task") / "landing" / "dist" / "public",
-                    Path.cwd() / "landing" / "dist" / "public",
-                ]
-                for alt_path in alt_paths:
-                    if alt_path.exists() and (alt_path / "index.html").exists():
-                        print(f"DEBUG: Found landing dist at alternative path: {alt_path}")
-                        # Update the container so future calls use the correct path
-                        landing_dist_container["path"] = alt_path
-                        return True
-        return exists
-    
-    # Get the actual landing_dist path for use in routes
-    def get_landing_dist():
-        return landing_dist_container["path"]
 
-    # Serve login page at /login.html FIRST (before landing page)
-    # This ensures login.html is served before React SPA can intercept
+    # Serve login page at root
+    @app.get("/")
+    def serve_root():
+        return send_from_directory(frontend_pages, "login.html")
+    
+    # Serve login page at /login.html
     @app.get("/login.html")
     def serve_login_html():
         return send_from_directory(frontend_pages, "login.html")
@@ -320,24 +287,15 @@ def create_app():
     def serve_login():
         return send_from_directory(frontend_pages, "login.html")
     
-    # Serve HTML pages from frontend/pages
-    @app.get("/<path:page>.html")
-    def serve_page(page):
-        return send_from_directory(frontend_pages, f"{page}.html")
-    
-    # Serve landing page at root (if available, otherwise serve login)
-    @app.get("/")
-    def serve_landing():
-        if landing_page_exists():
-            return send_from_directory(get_landing_dist(), "index.html")
-        else:
-            # Fallback to login page if landing page doesn't exist
-            return send_from_directory(frontend_pages, "login.html")
-    
     # Keep index.html for backward compatibility (redirect to login)
     @app.get("/index.html")
     def serve_index():
         return send_from_directory(frontend_pages, "login.html")
+    
+    # Serve HTML pages from frontend/pages
+    @app.get("/<path:page>.html")
+    def serve_page(page):
+        return send_from_directory(frontend_pages, f"{page}.html")
     
     # Serve signup page as root signup route
     @app.get("/signup")
@@ -356,52 +314,7 @@ def create_app():
     # Serve static JS files
     @app.get("/static/js/<path:filename>")
     def serve_js(filename):
-        js_file = frontend_static / "js" / filename
-        if not js_file.exists():
-            print(f"DEBUG: JS file not found - {js_file}")
-            print(f"DEBUG: frontend_static: {frontend_static}")
-            print(f"DEBUG: frontend_static exists: {frontend_static.exists()}")
-            if frontend_static.exists():
-                print(f"DEBUG: frontend_static contents: {list(frontend_static.iterdir()) if frontend_static.is_dir() else 'not a directory'}")
         return send_from_directory(frontend_static / "js", filename)
-    
-    # Serve landing page static assets (images, etc.) - only if landing exists
-    @app.get("/assets/<path:filename>")
-    def serve_landing_assets(filename):
-        if landing_page_exists():
-            return send_from_directory(get_landing_dist() / "assets", filename)
-        from flask import abort
-        abort(404)
-    
-    # Serve landing page public assets (images in public folder)
-    @app.get("/<path:filename>")
-    def serve_landing_public(filename):
-        # Don't interfere with API routes
-        if filename.startswith('api/'):
-            from flask import abort
-            abort(404)
-        
-        # Check if it's a landing page asset (images like hero-bg.jpg, etc.)
-        if landing_page_exists():
-            landing_dist = get_landing_dist()
-            landing_public_file = landing_dist / filename
-            if landing_public_file.exists() and landing_public_file.is_file():
-                return send_from_directory(landing_dist, filename)
-        
-        # Try frontend/pages for explicit HTML files (legacy pages like login.html, signup.html)
-        if filename.endswith('.html'):
-            return send_from_directory(frontend_pages, filename)
-        
-        # Try static folders
-        if filename.startswith('static/'):
-            return send_from_directory(frontend_static, filename[7:])  # Remove 'static/' prefix
-        
-        # Fallback to SPA index.html for client-side routed paths (e.g., /contact)
-        # Only if landing page exists, otherwise return 404
-        if landing_page_exists():
-            return send_from_directory(get_landing_dist(), "index.html")
-        from flask import abort
-        abort(404)
 
 
     # CLI command to seed default stores
@@ -500,6 +413,25 @@ def create_app():
             count = Inventory.query.filter_by(store_id=store.name).count()
             click.echo(f"{store.name:20} {count:3} items")
         click.echo("-" * 40)
+
+    # CLI command to create billings table
+    @app.cli.command("create-billings-table")
+    def create_billings_table_command():
+        """Create the store_billings table if it doesn't exist"""
+        from backend.models import StoreBilling
+        
+        with app.app_context():
+            # Import the model to ensure it's registered
+            # Then create all tables
+            db.create_all()
+            click.echo("✓ store_billings table created (or already exists)")
+    
+    # CLI command to add billing_month column
+    @app.cli.command("add-billing-month")
+    def add_billing_month_command():
+        """Add billing_month column to store_billings table"""
+        from backend.migrations.add_billing_month_column import migrate
+        migrate()
 
     return app
 

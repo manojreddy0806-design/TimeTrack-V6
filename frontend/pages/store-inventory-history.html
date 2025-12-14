@@ -232,6 +232,7 @@
         // Initialize period to last 11 days (ending today)
         function initPeriod() {
             const today = new Date();
+            today.setHours(23, 59, 59, 999); // End of today
             currentPeriodStart = new Date(today);
             currentPeriodStart.setDate(today.getDate() - (DAYS_PER_PERIOD - 1)); // 11 days including today
             currentPeriodStart.setHours(0, 0, 0, 0);
@@ -241,22 +242,29 @@
         function adjustPeriodToSnapshots() {
             if (allSnapshots.length === 0) return;
             
-            // Get the latest snapshot date
-            const latestSnapshot = allSnapshots[0];
-            const latestDate = new Date(latestSnapshot.snapshot_date);
+            // Always use today as the period end to ensure today's snapshot is included if it exists
+            const today = new Date();
+            today.setHours(23, 59, 59, 999); // End of today
             
-            // Set period to end on the latest snapshot date
-            currentPeriodStart = new Date(latestDate);
-            currentPeriodStart.setDate(latestDate.getDate() - (DAYS_PER_PERIOD - 1));
+            // Set period to end on today (this ensures today's snapshot will be included)
+            currentPeriodStart = new Date(today);
+            currentPeriodStart.setDate(today.getDate() - (DAYS_PER_PERIOD - 1));
             currentPeriodStart.setHours(0, 0, 0, 0);
             
+            console.log('Period adjusted to include today - Start:', formatDate(currentPeriodStart), 'End:', formatDate(today));
             updatePeriodRange();
         }
         
         function getPeriodEnd() {
-            const periodEnd = new Date(currentPeriodStart);
-            periodEnd.setDate(currentPeriodStart.getDate() + (DAYS_PER_PERIOD - 1));
-            return periodEnd;
+            // Always ensure period ends at least at today
+            const today = new Date();
+            today.setHours(23, 59, 59, 999); // End of today
+            
+            const calculatedEnd = new Date(currentPeriodStart);
+            calculatedEnd.setDate(currentPeriodStart.getDate() + (DAYS_PER_PERIOD - 1));
+            
+            // Return the later of: calculated end or today (always include today)
+            return calculatedEnd > today ? calculatedEnd : today;
         }
         
         function formatDate(date) {
@@ -371,16 +379,40 @@
                     return dateB - dateA;
                 });
                 
-                // Adjust period to match latest snapshots (only if period hasn't been manually set)
-                // This ensures we show the most recent data on initial load
+                // Adjust period to always include today if snapshots exist
+                // This ensures today's snapshot is always shown when it exists
+                const todayStr = formatDate(new Date());
+                
                 if (allSnapshots.length > 0) {
                     const latestSnapshot = allSnapshots[0];
                     const latestDate = new Date(latestSnapshot.snapshot_date);
                     const latestDateStr = formatDate(latestDate);
                     const currentEndStr = formatDate(getPeriodEnd());
                     
-                    // If current period doesn't include the latest snapshot, adjust it
-                    if (latestDateStr > currentEndStr) {
+                    // Check if latest snapshot is for today
+                    const isTodaySnapshot = latestDateStr === todayStr;
+                    
+                    // Check if ANY snapshot exists for today
+                    const hasTodaySnapshot = allSnapshots.some(s => formatDate(new Date(s.snapshot_date)) === todayStr);
+                    
+                    // Debug: Print all snapshot dates to verify today's snapshot is in the list
+                    const allSnapshotDates = allSnapshots.map(s => formatDate(new Date(s.snapshot_date)));
+                    console.log('All snapshot dates in response:', allSnapshotDates);
+                    console.log('Period check - Latest snapshot:', latestDateStr, 'Today:', todayStr, 'Current period end:', currentEndStr, 'Is today snapshot:', isTodaySnapshot, 'Has today snapshot:', hasTodaySnapshot);
+                    
+                    // Always adjust period to include today if:
+                    // 1. Current period doesn't include today, OR
+                    // 2. Latest snapshot is for today, OR
+                    // 3. Latest snapshot date is after the current period end
+                    if (currentEndStr < todayStr || isTodaySnapshot || latestDateStr > currentEndStr) {
+                        console.log('Adjusting period to include today/latest snapshot');
+                        adjustPeriodToSnapshots();
+                    }
+                } else {
+                    // Even if no snapshots yet, ensure period includes today for future submissions
+                    const currentEndStr = formatDate(getPeriodEnd());
+                    if (currentEndStr < todayStr) {
+                        console.log('Adjusting period to include today (no snapshots yet)');
                         adjustPeriodToSnapshots();
                     }
                 }
@@ -596,7 +628,33 @@
             
             try {
                 console.log('Starting Excel download, items count:', gridData.items.length);
-                // Group items by device_type
+                
+                // Format dates for Excel (DD-MMM format)
+                const dateHeaders = gridData.dates.map(dateStr => {
+                    const date = new Date(dateStr + 'T00:00:00');
+                    const day = String(date.getDate()).padStart(2, '0');
+                    const month = date.toLocaleDateString('en-US', { month: 'short' });
+                    return `${day}-${month}`;
+                });
+                
+                // Create workbook
+                const wb = XLSX.utils.book_new();
+                
+                // Device type names for display
+                const deviceTypeNames = {
+                    'metro': 'Metro Devices',
+                    'discontinued': 'Discontinued Phones/EOL Phones',
+                    'unlocked': 'Unlocked phones/NONUP'
+                };
+                
+                // Create a single sheet with all items combined
+                const excelData = [];
+                
+                // Header row: Item Name + dates
+                const headerRow = ['Item Name', ...dateHeaders];
+                excelData.push(headerRow);
+                
+                // Group items by device type for organization, but combine into one sheet
                 const itemsByType = {
                     'metro': [],
                     'discontinued': [],
@@ -612,42 +670,23 @@
                     }
                 });
                 
-                // Format dates for Excel (DD-MMM format)
-                const dateHeaders = gridData.dates.map(dateStr => {
-                    const date = new Date(dateStr + 'T00:00:00');
-                    const day = String(date.getDate()).padStart(2, '0');
-                    const month = date.toLocaleDateString('en-US', { month: 'short' });
-                    return `${day}-${month}`;
-                });
-                
-                // Create workbook
-                const wb = XLSX.utils.book_new();
-                
-                // Device type names for sheet titles
-                const deviceTypeNames = {
-                    'metro': 'Metro Devices',
-                    'discontinued': 'Discontinued Phones/EOL Phones',
-                    'unlocked': 'Unlocked phones/NONUP'
-                };
-                
-                // Function to sanitize sheet names (Excel doesn't allow : \ / ? * [ ])
-                function sanitizeSheetName(name) {
-                    // Replace invalid characters with space or dash
-                    return name.replace(/[:\\\/\?\*\[\]]/g, ' ').trim().substring(0, 31); // Excel max length is 31
-                }
-                
-                // Create a sheet for each device type
-                Object.keys(itemsByType).forEach(deviceType => {
+                // Add all items from all categories to the single sheet with category headings
+                // Order: metro, discontinued, unlocked
+                const categoryOrder = ['metro', 'discontinued', 'unlocked'];
+                categoryOrder.forEach(deviceType => {
                     const items = itemsByType[deviceType];
                     if (items.length === 0) return;
                     
-                    const excelData = [];
+                    // Add category heading row
+                    const categoryName = deviceTypeNames[deviceType] || deviceType;
+                    const headingRow = [categoryName]; // Category name in first column
+                    // Fill remaining columns with empty strings
+                    for (let i = 0; i < dateHeaders.length; i++) {
+                        headingRow.push('');
+                    }
+                    excelData.push(headingRow);
                     
-                    // Header row: Item Name + dates
-                    const headerRow = ['Item Name', ...dateHeaders];
-                    excelData.push(headerRow);
-                    
-                    // Item rows
+                    // Add all items from this category
                     items.forEach(item => {
                         const row = [item.name || 'Unknown'];
                         gridData.dates.forEach(dateStr => {
@@ -656,55 +695,58 @@
                         });
                         excelData.push(row);
                     });
-                    
-                    // Calculate totals for phones and simcards in this category
-                    const phonesTotal = {};
-                    const simcardsTotal = {};
-                    
-                    gridData.dates.forEach(dateStr => {
-                        let phonesSum = 0;
-                        let simcardsSum = 0;
-                        
-                        items.forEach(item => {
-                            const qty = item.quantities[dateStr] || 0;
-                            const nameLower = (item.name || '').toLowerCase();
-                            if (nameLower.includes('sim') || nameLower.includes('simcard')) {
-                                simcardsSum += qty;
-                            } else {
-                                phonesSum += qty;
-                            }
-                        });
-                        
-                        phonesTotal[dateStr] = phonesSum;
-                        simcardsTotal[dateStr] = simcardsSum;
-                    });
-                    
-                    // Add phones row
-                    const phonesRow = ['phones', ...gridData.dates.map(dateStr => phonesTotal[dateStr] || 0)];
-                    excelData.push(phonesRow);
-                    
-                    // Add simcards row
-                    const simcardsRow = ['simcard', ...gridData.dates.map(dateStr => simcardsTotal[dateStr] || 0)];
-                    excelData.push(simcardsRow);
-                    
-                    // Create worksheet
-                    const ws = XLSX.utils.aoa_to_sheet(excelData);
-                    
-                    // Set column widths
-                    ws['!cols'] = [
-                        { wch: 30 }  // Item Name column
-                    ];
-                    // Add width for each date column
-                    gridData.dates.forEach(() => {
-                        ws['!cols'].push({ wch: 15 });
-                    });
-                    
-                    // Add worksheet to workbook with sanitized device type name
-                    const originalName = deviceTypeNames[deviceType] || deviceType;
-                    const sheetName = sanitizeSheetName(originalName);
-                    console.log('Creating sheet:', sheetName, '(original:', originalName, ')');
-                    XLSX.utils.book_append_sheet(wb, ws, sheetName);
                 });
+                
+                // Calculate totals for phones and simcards across ALL categories
+                const phonesTotal = {};
+                const simcardsTotal = {};
+                
+                gridData.dates.forEach(dateStr => {
+                    let phonesSum = 0;
+                    let simcardsSum = 0;
+                    
+                    // Sum across all items from all categories
+                    gridData.items.forEach(item => {
+                        const qty = item.quantities[dateStr] || 0;
+                        const nameLower = (item.name || '').toLowerCase();
+                        const skuLower = (item.sku || '').toLowerCase();
+                        // Check both name and SKU for simcards
+                        if (nameLower.includes('sim') || nameLower.includes('simcard') || 
+                            skuLower.includes('sim') || skuLower.includes('simcard')) {
+                            simcardsSum += qty;
+                        } else {
+                            phonesSum += qty;
+                        }
+                    });
+                    
+                    phonesTotal[dateStr] = phonesSum;
+                    simcardsTotal[dateStr] = simcardsSum;
+                });
+                
+                // Add phones summary row
+                const phonesRow = ['phones', ...gridData.dates.map(dateStr => phonesTotal[dateStr] || 0)];
+                excelData.push(phonesRow);
+                
+                // Add simcards summary row
+                const simcardsRow = ['simcard', ...gridData.dates.map(dateStr => simcardsTotal[dateStr] || 0)];
+                excelData.push(simcardsRow);
+                
+                // Create worksheet
+                const ws = XLSX.utils.aoa_to_sheet(excelData);
+                
+                // Set column widths
+                ws['!cols'] = [
+                    { wch: 35 }  // Item Name column (wider to accommodate category headings)
+                ];
+                // Add width for each date column
+                gridData.dates.forEach(() => {
+                    ws['!cols'].push({ wch: 15 });
+                });
+                
+                // Add worksheet to workbook with single sheet name
+                const sheetName = 'Inventory';
+                console.log('Creating single sheet:', sheetName);
+                XLSX.utils.book_append_sheet(wb, ws, sheetName);
                 
                 // Generate filename with date range
                 const safeStoreName = storeName.replace(/[^a-zA-Z0-9_-]/g, '_');
@@ -733,6 +775,7 @@
         
         // Make functions global
         window.downloadInventoryExcel = downloadInventoryExcel;
+        window.loadInventoryHistory = loadInventoryHistory; // Make available globally so it can be called from other pages
         
         // Initialize
         document.addEventListener('DOMContentLoaded', () => {

@@ -119,6 +119,12 @@
                         <p class="text-red-600 font-semibold" id="errorMessage">Failed to load cash report</p>
                     </div>
                     <div id="tableContent" class="hidden overflow-x-auto">
+                        <div class="mb-4 flex justify-end">
+                            <button id="downloadBtn" class="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-primary rounded-lg hover:bg-primary-hover transition shadow-sm">
+                                <i class="fa-solid fa-download"></i>
+                                Download Report
+                            </button>
+                        </div>
                         <table class="w-full border-collapse cash-report-table">
                             <thead>
                                 <tr>
@@ -295,6 +301,66 @@
             document.getElementById('grandTotal').textContent = formatCurrency(grandTotal);
         }
 
+        function downloadReport() {
+            if (!reportData || !stores) {
+                alert('No data available to download');
+                return;
+            }
+
+            // Create CSV content
+            let csv = 'Cash Report\n';
+            csv += `Date Range: ${formatDisplayDate(currentWeekStart)} to ${formatDisplayDate(getWeekEnd())}\n\n`;
+            
+            // Header row
+            csv += 'Date,';
+            stores.forEach(store => {
+                csv += `${store},`;
+            });
+            csv += 'Total\n';
+
+            // Data rows
+            const dates = [];
+            const currentDate = new Date(currentWeekStart);
+            for (let i = 0; i < 7; i++) {
+                dates.push(new Date(currentDate));
+                currentDate.setDate(currentDate.getDate() + 1);
+            }
+
+            let grandTotal = 0;
+            dates.forEach(date => {
+                const dateStr = formatDate(date);
+                const displayDate = formatDisplayDate(dateStr);
+                csv += `${displayDate},`;
+                
+                let rowTotal = 0;
+                stores.forEach(store => {
+                    const storeData = reportData[dateStr]?.[store] || { cash_amount: 0 };
+                    const cashAmount = storeData.cash_amount || 0;
+                    rowTotal += cashAmount;
+                    csv += `${cashAmount.toFixed(2)},`;
+                });
+                
+                csv += `${rowTotal.toFixed(2)}\n`;
+                grandTotal += rowTotal;
+            });
+
+            // Grand total row
+            csv += 'Grand Total,';
+            stores.forEach(() => csv += ',');
+            csv += `${grandTotal.toFixed(2)}\n`;
+
+            // Create download link
+            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement('a');
+            const url = URL.createObjectURL(blob);
+            link.setAttribute('href', url);
+            link.setAttribute('download', `cash-report-${formatDate(currentWeekStart)}-to-${formatDate(getWeekEnd())}.csv`);
+            link.style.visibility = 'hidden';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+
         // Event listeners
         document.getElementById('prevWeekBtn').addEventListener('click', () => {
             currentWeekStart.setDate(currentWeekStart.getDate() - 7);
@@ -315,6 +381,8 @@
                 loadCashReport();
             }
         });
+
+        document.getElementById('downloadBtn').addEventListener('click', downloadReport);
 
         // Initialize navigation active state
         function initNavActiveState() {

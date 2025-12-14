@@ -5,7 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Card Report — TimeTrack</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <script>window.FontAwesomeConfig = { autoReplaceSvg: 'nest' };</script>
+    <script>
+        window.FontAwesomeConfig = {
+            autoReplaceSvg: 'nest'
+        };
+    </script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/js/all.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -40,6 +44,13 @@
         }
         .page-fade-in {
             animation: fadeInPage 0.6s ease forwards;
+        }
+        .card-report-table th,
+        .card-report-table td {
+            border: 1px solid #E2E8F0;
+        }
+        .card-report-table th {
+            background-color: #F8FAFC;
         }
     </style>
 </head>
@@ -78,24 +89,301 @@
             </div>
         </header>
 
-        <main id="main-content" class="page-fade-in max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-32 pb-12">
-            <div class="bg-white rounded-2xl shadow-lg border border-card-border overflow-hidden p-12 text-center">
-                <div class="mb-6">
-                    <div class="w-20 h-20 rounded-full bg-blue-50 flex items-center justify-center mx-auto mb-4">
-                        <i class="fa-solid fa-credit-card text-blue-600 text-3xl"></i>
+        <main id="main-content" class="page-fade-in max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-24 pb-12">
+            <div id="card-report-section" class="bg-white rounded-2xl shadow-lg border border-card-border overflow-hidden">
+                <div id="card-report-header" class="px-8 py-5 border-b border-card-border flex justify-between items-center bg-slate-50/50">
+                    <div>
+                        <h2 id="tenant-name" class="text-2xl font-bold text-slate-800">Card Report</h2>
+                        <p class="text-sm text-slate-500">Daily Card Payment Reports by Store (Card + Card1)</p>
                     </div>
-                    <h1 class="text-3xl font-bold text-slate-900 mb-2">Card Report</h1>
-                    <p class="text-secondary text-lg">This feature will be available soon.</p>
+                    <div class="text-right">
+                        <h3 class="text-lg font-semibold text-primary mb-2">Card Report</h3>
+                        <div class="flex items-center justify-end gap-3">
+                            <button id="prevWeekBtn" class="p-2 rounded-lg bg-white border border-slate-300 hover:bg-slate-50 hover:border-primary transition-all duration-200 hover:scale-105" title="Previous Week">
+                                <i class="fa-solid fa-chevron-left text-slate-700"></i>
+                            </button>
+                            <span id="weekRange" class="text-sm text-slate-600 font-medium min-w-[200px] text-center">Loading...</span>
+                            <button id="nextWeekBtn" class="p-2 rounded-lg bg-white border border-slate-300 hover:bg-slate-50 hover:border-primary transition-all duration-200 hover:scale-105" title="Next Week">
+                                <i class="fa-solid fa-chevron-right text-slate-700"></i>
+                            </button>
+                        </div>
+                    </div>
                 </div>
-                <a href="super-admin.html" class="inline-flex items-center gap-2 px-6 py-3 text-sm font-semibold text-white bg-primary rounded-lg hover:bg-primary-hover transition shadow-sm">
-                    <i class="fa-solid fa-arrow-left"></i>
-                    Back to Dashboard
-                </a>
+                <div id="card-report-table-container" class="p-6">
+                    <div id="loadingState" class="text-center py-12">
+                        <div class="inline-block animate-spin rounded-full h-12 w-12 border-4 border-blue-600 border-t-transparent mb-4"></div>
+                        <p class="text-slate-600">Loading card report data...</p>
+                    </div>
+                    <div id="errorState" class="hidden text-center py-12">
+                        <i class="fa-solid fa-triangle-exclamation text-red-500 text-4xl mb-4"></i>
+                        <p class="text-red-600 font-semibold" id="errorMessage">Failed to load card report</p>
+                    </div>
+                    <div id="tableContent" class="hidden overflow-x-auto">
+                        <div class="mb-4 flex justify-end">
+                            <button id="downloadBtn" class="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-primary rounded-lg hover:bg-primary-hover transition shadow-sm">
+                                <i class="fa-solid fa-download"></i>
+                                Download Report
+                            </button>
+                        </div>
+                        <table class="w-full border-collapse card-report-table">
+                            <thead>
+                                <tr>
+                                    <th class="px-4 py-3 text-left text-sm font-semibold text-slate-900 w-1/6">Date</th>
+                                    <!-- Store columns will be inserted here -->
+                                    <th class="px-4 py-3 text-center text-sm font-semibold text-slate-900 w-1/5">Total</th>
+                                </tr>
+                            </thead>
+                            <tbody id="card-report-body">
+                                <!-- Data rows will be inserted here -->
+                            </tbody>
+                            <tfoot>
+                                <tr class="bg-slate-100">
+                                    <td colspan="100" class="px-4 py-4 text-right text-lg font-bold text-slate-900">Grand Total:</td>
+                                    <td class="px-4 py-4 text-right text-lg font-bold text-primary" id="grandTotal">$0.00</td>
+                                </tr>
+                            </tfoot>
+                        </table>
+                    </div>
+                </div>
             </div>
         </main>
     </div>
+
     <script src="static/js/script.js"></script>
     <script>
+        let currentWeekStart = null;
+        let reportData = null;
+        let stores = [];
+
+        // Initialize week to last 7 days (ending today)
+        function initWeek() {
+            const today = new Date();
+            currentWeekStart = new Date(today);
+            currentWeekStart.setDate(today.getDate() - 6); // 7 days including today
+            currentWeekStart.setHours(0, 0, 0, 0);
+        }
+
+        function getWeekEnd() {
+            const weekEnd = new Date(currentWeekStart);
+            weekEnd.setDate(currentWeekStart.getDate() + 6);
+            return weekEnd;
+        }
+
+        function formatDate(date) {
+            return date.toISOString().split('T')[0];
+        }
+
+        function formatDisplayDate(date) {
+            const d = new Date(date);
+            const day = String(d.getDate()).padStart(2, '0');
+            const month = String(d.getMonth() + 1).padStart(2, '0');
+            const year = d.getFullYear();
+            return `${day}-${month}-${year}`;
+        }
+
+        function updateWeekRange() {
+            const weekEnd = getWeekEnd();
+            const startStr = formatDisplayDate(currentWeekStart);
+            const endStr = formatDisplayDate(weekEnd);
+            document.getElementById('weekRange').textContent = `${startStr} to ${endStr}`;
+        }
+
+        function formatCurrency(amount) {
+            return new Intl.NumberFormat('en-US', {
+                style: 'currency',
+                currency: 'USD',
+                minimumFractionDigits: 2
+            }).format(amount);
+        }
+
+        async function loadCardReport() {
+            const loadingState = document.getElementById('loadingState');
+            const errorState = document.getElementById('errorState');
+            const tableContent = document.getElementById('tableContent');
+            const errorMessage = document.getElementById('errorMessage');
+
+            loadingState.classList.remove('hidden');
+            errorState.classList.add('hidden');
+            tableContent.classList.add('hidden');
+
+            try {
+                const startDate = formatDate(currentWeekStart);
+                const endDate = formatDate(getWeekEnd());
+
+                const data = await apiGet(`/eod/card-report?start_date=${startDate}&end_date=${endDate}`);
+                
+                reportData = data.data;
+                stores = data.stores || [];
+
+                renderTable();
+                
+                loadingState.classList.add('hidden');
+                tableContent.classList.remove('hidden');
+            } catch (error) {
+                console.error('Error loading card report:', error);
+                loadingState.classList.add('hidden');
+                errorState.classList.remove('hidden');
+                errorMessage.textContent = error.message || 'Failed to load card report data';
+            }
+        }
+
+        function renderTable() {
+            const tbody = document.getElementById('card-report-body');
+            const thead = document.querySelector('thead tr');
+            
+            // Clear existing store columns (keep Date and Total)
+            const existingStoreCols = thead.querySelectorAll('th.store-col');
+            existingStoreCols.forEach(col => col.remove());
+
+            // Add store columns
+            stores.forEach((store, index) => {
+                const th = document.createElement('th');
+                th.className = 'px-4 py-3 text-center text-sm font-semibold text-slate-900 store-col';
+                th.textContent = store;
+                thead.insertBefore(th, thead.lastElementChild);
+            });
+
+            // Update footer colspan
+            const footerTd = document.querySelector('tfoot tr td:first-child');
+            footerTd.setAttribute('colspan', stores.length + 1);
+
+            // Clear tbody
+            tbody.innerHTML = '';
+
+            // Generate dates for the week
+            const dates = [];
+            const currentDate = new Date(currentWeekStart);
+            for (let i = 0; i < 7; i++) {
+                dates.push(new Date(currentDate));
+                currentDate.setDate(currentDate.getDate() + 1);
+            }
+
+            let grandTotal = 0;
+
+            // Create rows for each date
+            dates.forEach(date => {
+                const dateStr = formatDate(date);
+                const displayDate = formatDisplayDate(dateStr);
+                
+                const tr = document.createElement('tr');
+                tr.className = 'hover:bg-blue-50/30';
+                
+                // Date cell
+                const dateTd = document.createElement('td');
+                dateTd.className = 'px-4 py-1 text-sm text-slate-700';
+                dateTd.textContent = displayDate;
+                tr.appendChild(dateTd);
+
+                // Store cells
+                let rowTotal = 0;
+                stores.forEach(store => {
+                    const storeData = reportData[dateStr]?.[store] || { credit_amount: 0, card1_amount: 0, card_total: 0 };
+                    const cardTotal = storeData.card_total || 0;
+                    rowTotal += cardTotal;
+
+                    const storeTd = document.createElement('td');
+                    storeTd.className = 'px-4 py-3 text-sm text-slate-800 text-right font-medium';
+                    storeTd.textContent = formatCurrency(cardTotal);
+                    tr.appendChild(storeTd);
+                });
+
+                // Total cell
+                const totalTd = document.createElement('td');
+                totalTd.className = 'px-4 py-3 text-sm text-slate-800 font-semibold text-right';
+                totalTd.textContent = formatCurrency(rowTotal);
+                tr.appendChild(totalTd);
+
+                grandTotal += rowTotal;
+                tbody.appendChild(tr);
+            });
+
+            // Update grand total
+            document.getElementById('grandTotal').textContent = formatCurrency(grandTotal);
+        }
+
+        function downloadReport() {
+            if (!reportData || !stores) {
+                alert('No data available to download');
+                return;
+            }
+
+            // Create CSV content
+            let csv = 'Card Report\n';
+            csv += `Date Range: ${formatDisplayDate(currentWeekStart)} to ${formatDisplayDate(getWeekEnd())}\n\n`;
+            
+            // Header row
+            csv += 'Date,';
+            stores.forEach(store => {
+                csv += `${store},`;
+            });
+            csv += 'Total\n';
+
+            // Data rows
+            const dates = [];
+            const currentDate = new Date(currentWeekStart);
+            for (let i = 0; i < 7; i++) {
+                dates.push(new Date(currentDate));
+                currentDate.setDate(currentDate.getDate() + 1);
+            }
+
+            let grandTotal = 0;
+            dates.forEach(date => {
+                const dateStr = formatDate(date);
+                const displayDate = formatDisplayDate(dateStr);
+                csv += `${displayDate},`;
+                
+                let rowTotal = 0;
+                stores.forEach(store => {
+                    const storeData = reportData[dateStr]?.[store] || { card_total: 0 };
+                    const cardTotal = storeData.card_total || 0;
+                    rowTotal += cardTotal;
+                    csv += `${cardTotal.toFixed(2)},`;
+                });
+                
+                csv += `${rowTotal.toFixed(2)}\n`;
+                grandTotal += rowTotal;
+            });
+
+            // Grand total row
+            csv += 'Grand Total,';
+            stores.forEach(() => csv += ',');
+            csv += `${grandTotal.toFixed(2)}\n`;
+
+            // Create download link
+            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement('a');
+            const url = URL.createObjectURL(blob);
+            link.setAttribute('href', url);
+            link.setAttribute('download', `card-report-${formatDate(currentWeekStart)}-to-${formatDate(getWeekEnd())}.csv`);
+            link.style.visibility = 'hidden';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+
+        // Event listeners
+        document.getElementById('prevWeekBtn').addEventListener('click', () => {
+            currentWeekStart.setDate(currentWeekStart.getDate() - 7);
+            updateWeekRange();
+            loadCardReport();
+        });
+
+        document.getElementById('nextWeekBtn').addEventListener('click', () => {
+            const today = new Date();
+            today.setHours(23, 59, 59, 999);
+            const newWeekEnd = new Date(currentWeekStart);
+            newWeekEnd.setDate(currentWeekStart.getDate() + 13); // Check if next week would go beyond today
+            
+            // Don't allow going beyond today
+            if (newWeekEnd <= today) {
+                currentWeekStart.setDate(currentWeekStart.getDate() + 7);
+                updateWeekRange();
+                loadCardReport();
+            }
+        });
+
+        document.getElementById('downloadBtn').addEventListener('click', downloadReport);
+
         // Initialize navigation active state
         function initNavActiveState() {
             const nav = document.querySelector('nav');
@@ -109,11 +397,13 @@
             }
         }
         
-        // Initialize on page load
+        // Initialize
         document.addEventListener('DOMContentLoaded', () => {
             initNavActiveState();
+            initWeek();
+            updateWeekRange();
+            loadCardReport();
         });
     </script>
 </body>
 </html>
-

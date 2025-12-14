@@ -204,3 +204,93 @@ def get_cash_report():
         import traceback
         traceback.print_exc()
         return jsonify({"error": f"Failed to get cash report: {str(e)}"}), 500
+
+@bp.get("/card-report")
+@require_auth(roles=['super-admin'])
+def get_card_report():
+    """
+    Get card report data for all stores for a date range (7 days).
+    Returns data grouped by date and store.
+    Card report uses credit_amount + card1_amount from EOD.
+    
+    Query params:
+    - start_date: Start date (YYYY-MM-DD), defaults to 7 days ago
+    - end_date: End date (YYYY-MM-DD), defaults to today
+    """
+    try:
+        tenant_id = g.tenant_id
+        
+        # Get date range from query params
+        start_date_param = request.args.get("start_date")
+        end_date_param = request.args.get("end_date")
+        
+        if start_date_param:
+            start_date = datetime.strptime(start_date_param, "%Y-%m-%d").date()
+        else:
+            start_date = (datetime.now() - timedelta(days=6)).date()  # 7 days including today
+        
+        if end_date_param:
+            end_date = datetime.strptime(end_date_param, "%Y-%m-%d").date()
+        else:
+            end_date = datetime.now().date()
+        
+        # Get all stores for this tenant
+        stores = get_stores(tenant_id=tenant_id)
+        store_names = [store["name"] for store in stores]
+        
+        # Get EOD reports for the date range
+        start_date_str = start_date.isoformat()
+        end_date_str = end_date.isoformat()
+        
+        eods = EOD.query.filter(
+            EOD.tenant_id == tenant_id,
+            EOD.report_date >= start_date_str,
+            EOD.report_date <= end_date_str
+        ).all()
+        
+        # Group data by date and store
+        report_data = {}
+        
+        # Initialize all dates in range with empty data
+        current_date = start_date
+        while current_date <= end_date:
+            date_str = current_date.strftime("%Y-%m-%d")
+            report_data[date_str] = {}
+            for store_name in store_names:
+                report_data[date_str][store_name] = {
+                    "credit_amount": 0,
+                    "card1_amount": 0,
+                    "card_total": 0
+                }
+            current_date += timedelta(days=1)
+        
+        # Fill in actual EOD data
+        for eod in eods:
+            date_str = eod.report_date
+            store_name = eod.store_id
+            
+            if date_str in report_data and store_name in report_data[date_str]:
+                credit_amount = float(eod.credit_amount or 0)
+                card1_amount = float(eod.card1_amount or 0)
+                card_total = credit_amount + card1_amount
+                
+                report_data[date_str][store_name] = {
+                    "credit_amount": credit_amount,
+                    "card1_amount": card1_amount,
+                    "card_total": card_total
+                }
+        
+        # Format response
+        result = {
+            "start_date": start_date.isoformat(),
+            "end_date": end_date.isoformat(),
+            "stores": store_names,
+            "data": report_data
+        }
+        
+        return jsonify(result), 200
+        
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": f"Failed to get card report: {str(e)}"}), 500
