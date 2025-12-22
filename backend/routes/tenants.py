@@ -78,62 +78,106 @@ def get_stripe_config():
         'premium': os.getenv("STRIPE_PRICE_ID_PREMIUM", "").strip()
     }
     
+    # Support separate webhook secrets for development and production
+    # Development: STRIPE_WEBHOOK_SECRET_DEV (from stripe listen command)
+    # Production: STRIPE_WEBHOOK_SECRET (from Stripe Dashboard)
+    env_mode = os.getenv("FLASK_ENV", os.getenv("ENVIRONMENT", "production")).lower()
+    is_dev = env_mode == "development" or "localhost" in os.getenv("STRIPE_SUCCESS_URL", "")
+    
+    webhook_secret = ""
+    if is_dev:
+        # Try development webhook secret first
+        webhook_secret = os.getenv("STRIPE_WEBHOOK_SECRET_DEV", "").strip()
+        # Fallback to regular webhook secret if dev secret not set
+        if not webhook_secret:
+            webhook_secret = os.getenv("STRIPE_WEBHOOK_SECRET", "").strip()
+    else:
+        # Production: use production webhook secret
+        webhook_secret = os.getenv("STRIPE_WEBHOOK_SECRET", "").strip()
+    
     return {
         'api_key': stripe_key,
         'price_ids': price_ids,
-        'webhook_secret': os.getenv("STRIPE_WEBHOOK_SECRET", "").strip(),
+        'webhook_secret': webhook_secret,
         'success_url': os.getenv("STRIPE_SUCCESS_URL", "http://localhost:5000/signup-success?session_id={CHECKOUT_SESSION_ID}"),
         'cancel_url': os.getenv("STRIPE_CANCEL_URL", "http://localhost:5000/signup?cancelled=true"),
         'env_path': str(env_path),
-        'env_exists': env_exists
+        'env_exists': env_exists,
+        'is_dev': is_dev
     }
 
-# Email configuration
-SMTP_HOST = os.getenv("SMTP_HOST", "smtp.gmail.com")
-SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
-SMTP_USER = os.getenv("SMTP_USER", "")
-SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "")
-FROM_EMAIL = os.getenv("FROM_EMAIL", SMTP_USER)
+def get_email_config():
+    """Get email configuration from environment variables (reloads at runtime)"""
+    # Reload env to ensure we have latest values
+    load_dotenv(ENV_PATH if ENV_PATH.exists() else None, override=True)
+    
+    smtp_host = os.getenv("SMTP_HOST", "smtp.gmail.com")
+    smtp_port = int(os.getenv("SMTP_PORT", "587"))
+    smtp_user = os.getenv("SMTP_USER", "").strip()
+    smtp_password = os.getenv("SMTP_PASSWORD", "").strip()
+    from_email = os.getenv("FROM_EMAIL", "").strip() or smtp_user
+    
+    return {
+        'host': smtp_host,
+        'port': smtp_port,
+        'user': smtp_user,
+        'password': smtp_password,
+        'from_email': from_email,
+        'configured': bool(smtp_user and smtp_password)
+    }
 
 
 def send_email(to_email, subject, body_html, body_text=None):
     """Send email using SMTP"""
-    if not SMTP_USER or not SMTP_PASSWORD:
-        print(f"⚠️ Email not configured. Would send to {to_email}: {subject}")
-        print(f"Body: {body_text or body_html}")
+    # Get email config at runtime to ensure latest values
+    email_config = get_email_config()
+    
+    if not email_config['configured']:
+        print(f"❌ EMAIL NOT CONFIGURED: SMTP credentials are missing!")
+        print(f"   Required environment variables: SMTP_USER, SMTP_PASSWORD")
+        print(f"   Optional: SMTP_HOST (default: smtp.gmail.com), SMTP_PORT (default: 587), FROM_EMAIL")
+        print(f"   Would send email to: {to_email}")
+        print(f"   Subject: {subject}")
         return False
     
     try:
         print(f"📧 Attempting to send email to {to_email}...")
-        print(f"   From: {FROM_EMAIL}")
+        print(f"   SMTP Host: {email_config['host']}:{email_config['port']}")
+        print(f"   From: {email_config['from_email']}")
         print(f"   Subject: {subject}")
         
         msg = MIMEMultipart('alternative')
         msg['Subject'] = subject
-        msg['From'] = FROM_EMAIL
+        msg['From'] = email_config['from_email']
         msg['To'] = to_email
         
         if body_text:
             msg.attach(MIMEText(body_text, 'plain'))
         msg.attach(MIMEText(body_html, 'html'))
         
-        print(f"   Connecting to {SMTP_HOST}:{SMTP_PORT}...")
-        with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
+        print(f"   Connecting to {email_config['host']}:{email_config['port']}...")
+        with smtplib.SMTP(email_config['host'], email_config['port']) as server:
             print(f"   Starting TLS...")
             server.starttls()
-            print(f"   Logging in as {SMTP_USER}...")
-            server.login(SMTP_USER, SMTP_PASSWORD)
+            print(f"   Logging in as {email_config['user']}...")
+            server.login(email_config['user'], email_config['password'])
             print(f"   Sending message...")
             server.send_message(msg)
         
-        print(f"✅ Email sent successfully!")
+        print(f"✅ Email sent successfully to {to_email}!")
         return True
     except smtplib.SMTPAuthenticationError as e:
         print(f"❌ SMTP Authentication Error: {e}")
-        print(f"   Check your SMTP_USER and SMTP_PASSWORD in .env")
+        print(f"   Check your SMTP_USER and SMTP_PASSWORD in environment variables")
+        print(f"   For Gmail: Use an 'App Password' (not your regular password)")
+        print(f"   Get app password: https://myaccount.google.com/apppasswords")
+        import traceback
+        traceback.print_exc()
         return False
     except smtplib.SMTPException as e:
         print(f"❌ SMTP Error: {e}")
+        import traceback
+        traceback.print_exc()
         return False
     except Exception as e:
         print(f"❌ Error sending email: {type(e).__name__}: {e}")
@@ -411,6 +455,9 @@ def stripe_webhook():
     
     if not webhook_secret:
         print("❌ Error: Webhook secret not configured")
+        print("   For development: Run 'stripe listen' and set STRIPE_WEBHOOK_SECRET_DEV")
+        print("   For production: Configure webhook in Stripe Dashboard and set STRIPE_WEBHOOK_SECRET")
+        print("   See WEBHOOK_SETUP.md for detailed instructions")
         return jsonify({"error": "Webhook secret not configured"}), 500
     
     # Ensure Stripe is initialized
@@ -512,7 +559,13 @@ def stripe_webhook():
                     if email_sent:
                         print(f"✅ Email sent successfully to {tenant.email}")
                     else:
-                        print(f"⚠️ Email sending failed (check email configuration)")
+                        print(f"❌ CRITICAL: Email sending failed!")
+                        print(f"   Tenant ID: {tenant_id}")
+                        print(f"   Email: {tenant.email}")
+                        print(f"   Username: {super_admin_username}")
+                        print(f"   Password: {super_admin_password}")
+                        print(f"   ⚠️ Please configure SMTP settings to send emails automatically")
+                        print(f"   ⚠️ User must contact support or check server logs for credentials")
                     
                 except ValueError as e:
                     # Manager already exists or other error

@@ -77,6 +77,61 @@ def create_app():
             # Don't re-raise - allow app to start and handle DB errors at request time
             # This is important for serverless functions where DB might not be available at cold start
     
+    # Check email configuration at startup
+    try:
+        from backend.routes.tenants import get_email_config
+        email_config = get_email_config()
+        if not email_config['configured']:
+            print("\n" + "="*80)
+            print("⚠️  EMAIL CONFIGURATION WARNING")
+            print("="*80)
+            print("SMTP credentials are not configured. Emails will NOT be sent!")
+            print("\nTo enable email sending, set these environment variables:")
+            print("  SMTP_USER=your-email@gmail.com")
+            print("  SMTP_PASSWORD=your-app-password")
+            print("  SMTP_HOST=smtp.gmail.com (optional, default)")
+            print("  SMTP_PORT=587 (optional, default)")
+            print("  FROM_EMAIL=your-email@gmail.com (optional)")
+            print("\nFor Gmail:")
+            print("  1. Enable 2-factor authentication")
+            print("  2. Generate an 'App Password' at: https://myaccount.google.com/apppasswords")
+            print("  3. Use the app password as SMTP_PASSWORD (not your regular password)")
+            print("="*80 + "\n")
+        else:
+            print(f"✅ Email configured: {email_config['from_email']} via {email_config['host']}:{email_config['port']}")
+    except Exception as e:
+        print(f"⚠️  Warning: Could not check email configuration: {e}")
+    
+    # Check Stripe webhook configuration at startup
+    try:
+        from backend.routes.tenants import get_stripe_config
+        stripe_config = get_stripe_config()
+        if not stripe_config['webhook_secret']:
+            env_mode = os.getenv("FLASK_ENV", os.getenv("ENVIRONMENT", "production")).lower()
+            is_dev = env_mode == "development"
+            print("\n" + "="*80)
+            print("⚠️  STRIPE WEBHOOK CONFIGURATION WARNING")
+            print("="*80)
+            if is_dev:
+                print("Development mode: Webhook secret not configured.")
+                print("\nFor local development:")
+                print("  1. Run: stripe listen --forward-to http://localhost:5000/api/tenants/webhook/stripe")
+                print("  2. Copy the webhook signing secret (whsec_...)")
+                print("  3. Set in .env: STRIPE_WEBHOOK_SECRET_DEV=whsec_xxxxxxxxxxxxx")
+            else:
+                print("Production mode: Webhook secret not configured.")
+                print("\nFor production:")
+                print("  1. Go to Stripe Dashboard > Developers > Webhooks")
+                print("  2. Add endpoint: https://your-domain.com/api/tenants/webhook/stripe")
+                print("  3. Select event: checkout.session.completed")
+                print("  4. Copy the signing secret and set: STRIPE_WEBHOOK_SECRET=whsec_xxxxxxxxxxxxx")
+            print("\nSee WEBHOOK_SETUP.md for detailed instructions")
+            print("="*80 + "\n")
+        else:
+            print(f"✅ Stripe webhook configured ({'dev' if stripe_config.get('is_dev') else 'production'} mode)")
+    except Exception as e:
+        print(f"⚠️  Warning: Could not check Stripe webhook configuration: {e}")
+    
     # Initialize rate limiter
     # Don't apply default limits globally - only apply to specific routes that need protection
     # This prevents static files and favicon from being rate limited

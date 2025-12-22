@@ -130,6 +130,67 @@
             </div>
         </main>
     </div>
+
+    <!-- Super Admin Edit Modal -->
+    <div id="superAdminModal" class="hidden fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full max-h-[90vh] overflow-y-auto">
+            <div class="sticky top-0 bg-white border-b border-card-border px-6 py-4 flex items-center justify-between rounded-t-2xl">
+                <h2 class="text-2xl font-bold text-slate-900 flex items-center gap-2">
+                    <i class="fa-solid fa-user-shield text-primary"></i>
+                    Edit Super Admin
+                </h2>
+                <button onclick="closeSuperAdminModal()" class="text-slate-400 hover:text-slate-600 transition-colors">
+                    <i class="fa-solid fa-times text-xl"></i>
+                </button>
+            </div>
+            <div class="p-6">
+                <div id="superAdminError" class="hidden mb-4 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm"></div>
+                <div id="superAdminSuccess" class="hidden mb-4 p-4 bg-green-50 border border-green-200 rounded-lg text-green-700 text-sm"></div>
+                
+                <form id="superAdminForm" class="space-y-5">
+                    <div>
+                        <label for="superAdminUsername" class="block text-sm font-semibold text-slate-800 mb-2">
+                            Username <span class="text-red-500">*</span>
+                        </label>
+                        <input type="text" id="superAdminUsername" required
+                            class="block w-full px-4 py-3 text-base bg-slate-50 border-2 border-slate-300 rounded-xl focus:ring-4 focus:ring-primary/20 focus:border-primary focus:bg-white transition-all duration-300">
+                    </div>
+                    
+                    <div>
+                        <label for="superAdminPassword" class="block text-sm font-semibold text-slate-800 mb-2">
+                            New Password
+                        </label>
+                        <input type="password" id="superAdminPassword"
+                            placeholder="Leave blank to keep current password"
+                            class="block w-full px-4 py-3 text-base bg-slate-50 border-2 border-slate-300 rounded-xl focus:ring-4 focus:ring-primary/20 focus:border-primary focus:bg-white transition-all duration-300">
+                        <p class="mt-1 text-xs text-slate-500">Leave blank if you don't want to change password</p>
+                    </div>
+                    
+                    <div>
+                        <label for="superAdminConfirmPassword" class="block text-sm font-semibold text-slate-800 mb-2">
+                            Confirm New Password
+                        </label>
+                        <input type="password" id="superAdminConfirmPassword"
+                            placeholder="Re-enter new password"
+                            class="block w-full px-4 py-3 text-base bg-slate-50 border-2 border-slate-300 rounded-xl focus:ring-4 focus:ring-primary/20 focus:border-primary focus:bg-white transition-all duration-300">
+                        <div id="passwordMatchError" class="hidden mt-1 text-xs text-red-600">Passwords do not match</div>
+                    </div>
+                    
+                    <div class="flex gap-3 pt-4">
+                        <button type="button" onclick="closeSuperAdminModal()" 
+                            class="flex-1 px-4 py-3 text-sm font-semibold text-slate-700 bg-slate-100 rounded-lg hover:bg-slate-200 transition">
+                            Cancel
+                        </button>
+                        <button type="submit" 
+                            class="flex-1 px-4 py-3 text-sm font-semibold text-white bg-primary rounded-lg hover:bg-primary-hover transition shadow-sm">
+                            <i class="fa-solid fa-save mr-2"></i>
+                            Save Changes
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
     
     <script src="static/js/script.js"></script>
     <script>
@@ -165,6 +226,7 @@
         initNavActiveState();
 
         let allManagers = [];
+        let superAdminInfo = null;
         
         function getInitials(name) {
             return name
@@ -186,6 +248,18 @@
                 document.getElementById('loadingState').classList.remove('hidden');
                 document.getElementById('managersGrid').classList.add('hidden');
                 document.getElementById('emptyState').classList.add('hidden');
+                
+                const session = loadSession();
+                const isSuperAdmin = session && session.role === 'super-admin';
+                
+                // Load super admin info if logged in as super admin
+                if (isSuperAdmin && session.username) {
+                    try {
+                        superAdminInfo = await apiGet(`/managers/${encodeURIComponent(session.username)}`);
+                    } catch (err) {
+                        console.error('Failed to load super admin info:', err);
+                    }
+                }
                 
                 allManagers = await apiGet('/managers/');
                 
@@ -212,6 +286,7 @@
             const searchTerm = document.getElementById('searchInput').value.toLowerCase().trim();
             const session = loadSession();
             const isAdmin = session && session.role === 'admin';
+            const isSuperAdmin = session && session.role === 'super-admin';
             
             let filteredManagers = allManagers;
             
@@ -224,17 +299,45 @@
             
             document.getElementById('loadingState').classList.add('hidden');
             
-            if (filteredManagers.length === 0) {
-                document.getElementById('managersGrid').classList.add('hidden');
-                document.getElementById('emptyState').classList.remove('hidden');
-                return;
+            const grid = document.getElementById('managersGrid');
+            let html = '';
+            
+            // Add super admin card if logged in as super admin
+            if (isSuperAdmin && superAdminInfo) {
+                const superAdminSearchMatch = !searchTerm || 
+                    (superAdminInfo.name && superAdminInfo.name.toLowerCase().includes(searchTerm)) ||
+                    (superAdminInfo.username && superAdminInfo.username.toLowerCase().includes(searchTerm));
+                
+                if (superAdminSearchMatch) {
+                    const initials = getInitials(superAdminInfo.name || superAdminInfo.username || 'SA');
+                    html += `
+                        <div class="bg-gradient-to-br from-purple-50 to-blue-50 p-6 rounded-xl border-2 border-purple-300 shadow-lg hover:shadow-xl transition-all duration-300 hover:-translate-y-1 hover:scale-[1.02]">
+                            <div class="flex items-center space-x-4 mb-4">
+                                <div class="w-16 h-16 rounded-full bg-gradient-to-br from-purple-600 to-blue-600 flex items-center justify-center text-white text-xl font-bold shadow-lg">
+                                    ${initials}
+                                </div>
+                                <div class="flex-1">
+                                    <div class="flex items-center gap-2 mb-1">
+                                        <h3 class="text-lg font-semibold text-slate-900">${escapeHtml(superAdminInfo.name || 'Super Admin')}</h3>
+                                        <span class="px-2 py-0.5 text-xs font-bold text-purple-700 bg-purple-200 rounded-full">SUPER ADMIN</span>
+                                    </div>
+                                    <p class="text-sm text-slate-600">${escapeHtml(superAdminInfo.username || '')}</p>
+                                </div>
+                            </div>
+                            <div class="mt-4 pt-4 border-t border-purple-200" onclick="event.stopPropagation();">
+                                <button onclick="openSuperAdminModal()" 
+                                        class="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-semibold text-white bg-gradient-to-r from-purple-600 to-blue-600 rounded-md hover:from-purple-700 hover:to-blue-700 transition shadow-sm">
+                                    <i class="fa-solid fa-edit"></i>
+                                    Manage Credentials
+                                </button>
+                            </div>
+                        </div>
+                    `;
+                }
             }
             
-            const grid = document.getElementById('managersGrid');
-            grid.classList.remove('hidden');
-            document.getElementById('emptyState').classList.add('hidden');
-            
-            grid.innerHTML = filteredManagers.map(mgr => {
+            // Add manager cards
+            html += filteredManagers.map(mgr => {
                 const initials = getInitials(mgr.name || mgr.username || 'M');
                 const editButtonHtml = isAdmin ? '' : `
                         <div class="mt-4 pt-4 border-t border-card-border" onclick="event.stopPropagation();">
@@ -264,6 +367,24 @@
                     </div>
                 `;
             }).join('');
+            
+            if (html === '' && !searchTerm) {
+                // No super admin card and no managers
+                document.getElementById('managersGrid').classList.add('hidden');
+                document.getElementById('emptyState').classList.remove('hidden');
+                return;
+            }
+            
+            if (html === '' && searchTerm) {
+                // Search term but no matches
+                document.getElementById('managersGrid').classList.add('hidden');
+                document.getElementById('emptyState').classList.remove('hidden');
+                return;
+            }
+            
+            grid.classList.remove('hidden');
+            document.getElementById('emptyState').classList.add('hidden');
+            grid.innerHTML = html;
         }
         
         window.openManagerDashboard = function(managerUsername) {
@@ -276,6 +397,121 @@
         window.editManager = async function(managerUsername, managerName) {
             window.location = `add-manager.html?edit=${encodeURIComponent(managerUsername)}`;
         };
+        
+        window.openSuperAdminModal = function() {
+            if (!superAdminInfo) return;
+            
+            document.getElementById('superAdminUsername').value = superAdminInfo.username || '';
+            document.getElementById('superAdminPassword').value = '';
+            document.getElementById('superAdminConfirmPassword').value = '';
+            document.getElementById('superAdminError').classList.add('hidden');
+            document.getElementById('superAdminSuccess').classList.add('hidden');
+            document.getElementById('passwordMatchError').classList.add('hidden');
+            document.getElementById('superAdminModal').classList.remove('hidden');
+        };
+        
+        window.closeSuperAdminModal = function() {
+            document.getElementById('superAdminModal').classList.add('hidden');
+        };
+        
+        // Handle password confirmation
+        document.getElementById('superAdminConfirmPassword').addEventListener('input', function() {
+            const password = document.getElementById('superAdminPassword').value;
+            const confirmPassword = this.value;
+            const errorDiv = document.getElementById('passwordMatchError');
+            
+            if (password && confirmPassword && password !== confirmPassword) {
+                errorDiv.classList.remove('hidden');
+            } else {
+                errorDiv.classList.add('hidden');
+            }
+        });
+        
+        // Handle form submission
+        document.getElementById('superAdminForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const errorDiv = document.getElementById('superAdminError');
+            const successDiv = document.getElementById('superAdminSuccess');
+            const session = loadSession();
+            
+            if (!session || session.role !== 'super-admin' || !session.username) {
+                errorDiv.textContent = 'Invalid session. Please login again.';
+                errorDiv.classList.remove('hidden');
+                return;
+            }
+            
+            const username = document.getElementById('superAdminUsername').value.trim();
+            const password = document.getElementById('superAdminPassword').value;
+            const confirmPassword = document.getElementById('superAdminConfirmPassword').value;
+            
+            // Hide previous messages
+            errorDiv.classList.add('hidden');
+            successDiv.classList.add('hidden');
+            
+            // Validate
+            if (!username) {
+                errorDiv.textContent = 'Username is required';
+                errorDiv.classList.remove('hidden');
+                return;
+            }
+            
+            // If password is provided, confirm password must match
+            if (password) {
+                if (password !== confirmPassword) {
+                    errorDiv.textContent = 'Passwords do not match';
+                    errorDiv.classList.remove('hidden');
+                    return;
+                }
+                if (password.length < 8) {
+                    errorDiv.textContent = 'Password must be at least 8 characters long';
+                    errorDiv.classList.remove('hidden');
+                    return;
+                }
+            }
+            
+            try {
+                const updateData = {
+                    username: username
+                };
+                
+                // Only include password if it's provided
+                if (password) {
+                    updateData.password = password;
+                }
+                
+                await apiPut(`/managers/${encodeURIComponent(session.username)}`, updateData);
+                
+                // Update session if username changed
+                if (username !== session.username) {
+                    session.username = username;
+                    saveSession(session);
+                }
+                
+                // Reload super admin info
+                superAdminInfo = await apiGet(`/managers/${encodeURIComponent(username)}`);
+                
+                successDiv.textContent = 'Credentials updated successfully!';
+                successDiv.classList.remove('hidden');
+                
+                // Reload managers to reflect changes
+                setTimeout(() => {
+                    loadManagers();
+                    closeSuperAdminModal();
+                }, 1500);
+                
+            } catch (err) {
+                errorDiv.textContent = err.message || 'Failed to update credentials';
+                errorDiv.classList.remove('hidden');
+            }
+        });
+        
+        // Close modal on outside click
+        document.getElementById('superAdminModal').addEventListener('click', function(e) {
+            if (e.target === this) {
+                closeSuperAdminModal();
+            }
+        });
         
         document.getElementById('searchInput').addEventListener('input', renderManagers);
         
