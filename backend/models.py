@@ -65,7 +65,10 @@ class Manager(db.Model):
     # the composite UniqueConstraint('tenant_id', 'username') below, NOT by a unique index on username alone
     username = db.Column(db.String(50), nullable=False, index=True)
     password = db.Column(db.String(200), nullable=False)
+    location = db.Column(db.String(100), nullable=True)  # Manager location
     is_super_admin = db.Column(db.Boolean, default=False)  # True for tenant's super admin
+    is_admin = db.Column(db.Boolean, default=False)  # True for admin users
+    regions = db.Column(db.Text, nullable=True)  # JSON array of regions assigned to admin
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     
     # Relationships
@@ -85,12 +88,26 @@ class Manager(db.Model):
             'tenant_id': self.tenant_id,
             'name': self.name,
             'username': self.username,
+            'location': self.location,
             'is_super_admin': self.is_super_admin,
+            'is_admin': self.is_admin,
+            'regions': self.get_regions(),
             'created_at': self.created_at.isoformat() if self.created_at else None
         }
         if include_password:
             data['password'] = self.password
         return data
+    
+    def get_regions(self):
+        """Parse JSON regions field"""
+        try:
+            return json.loads(self.regions) if self.regions else []
+        except:
+            return []
+    
+    def set_regions(self, regions_list):
+        """Serialize regions to JSON"""
+        self.regions = json.dumps(regions_list) if regions_list else None
 
 
 class Store(db.Model):
@@ -654,7 +671,7 @@ def get_all_managers(tenant_id=None):
     return [m.to_dict() for m in managers]
 
 
-def create_manager(tenant_id, name, username, password, is_super_admin=False):
+def create_manager(tenant_id, name, username, password, location=None, is_super_admin=False, is_admin=False, regions=None):
     """Create a new manager account"""
     # Check if username already exists for this tenant
     existing = Manager.query.filter_by(tenant_id=tenant_id, username=username).first()
@@ -669,15 +686,20 @@ def create_manager(tenant_id, name, username, password, is_super_admin=False):
         name=name,
         username=username,
         password=password_hash,
-        is_super_admin=is_super_admin
+        location=location,
+        is_super_admin=is_super_admin,
+        is_admin=is_admin
     )
+    if regions:
+        manager.set_regions(regions)
+    
     db.session.add(manager)
     db.session.commit()
     
     return manager.to_dict()
 
 
-def update_manager(tenant_id, username, name=None, new_username=None, password=None):
+def update_manager(tenant_id, username, name=None, new_username=None, password=None, location=None, is_admin=None, regions=None):
     """Update an existing manager account"""
     # Check if manager exists
     manager = Manager.query.filter_by(tenant_id=tenant_id, username=username).first()
@@ -706,8 +728,17 @@ def update_manager(tenant_id, username, name=None, new_username=None, password=N
     if new_username is not None:
         manager.username = new_username
     
+    if location is not None:
+        manager.location = location
+    
     if password is not None:
         manager.password = hash_password(password)
+    
+    if is_admin is not None:
+        manager.is_admin = is_admin
+    
+    if regions is not None:
+        manager.set_regions(regions)
     
     # Commit the manager update
     db.session.commit()

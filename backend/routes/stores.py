@@ -372,23 +372,43 @@ def manager_login():
     if tenant and tenant.status != 'active':
         return jsonify({"error": f"Account is {tenant.status}. Please contact support."}), 403
     
+    # Determine role
+    if manager.get("is_super_admin"):
+        role = "super-admin"
+    elif manager.get("is_admin"):
+        role = "admin"
+        regions = manager.get("regions", [])
+    else:
+        role = "manager"
+    
     # Generate JWT token
-    token = generate_token({
-        "role": "manager" if not manager.get("is_super_admin") else "super-admin",
+    token_data = {
+        "role": role,
         "tenant_id": tenant_id,
         "name": manager.get("name", "Manager"),
         "username": username,
-        "is_super_admin": manager.get("is_super_admin", False)
-    })
+        "is_super_admin": manager.get("is_super_admin", False),
+        "is_admin": manager.get("is_admin", False)
+    }
+    
+    if role == "admin":
+        token_data["regions"] = regions
+    
+    token = generate_token(token_data)
     
     # Don't return password
     manager.pop("password", None)
-    return jsonify({
-        "role": "manager" if not manager.get("is_super_admin") else "super-admin",
+    response_data = {
+        "role": role,
         "tenant_id": tenant_id,
         "name": manager.get("name", "Manager"),
         "username": username,
         "token": token
-    }), 200
+    }
+    
+    if role == "admin":
+        response_data["regions"] = regions
+    
+    return jsonify(response_data), 200
 
 

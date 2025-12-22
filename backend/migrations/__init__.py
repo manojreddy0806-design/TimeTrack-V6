@@ -1,4 +1,4 @@
 """
-Database migration scripts for TimeTrack application.
+Database migration scripts for Pramaan application.
 """
 

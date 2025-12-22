@@ -289,14 +289,14 @@ async function apiDelete(path) {
 
 // ---------- Session ----------
 function saveSession(session) {
-  localStorage.setItem("TimeTrack_Session", JSON.stringify(session));
+  localStorage.setItem("Pramaan_Session", JSON.stringify(session));
 }
 function loadSession() {
-  try { return JSON.parse(localStorage.getItem("TimeTrack_Session")); }
+  try { return JSON.parse(localStorage.getItem("Pramaan_Session")); }
   catch { return null; }
 }
 function clearSession() {
-  localStorage.removeItem("TimeTrack_Session");
+  localStorage.removeItem("Pramaan_Session");
 }
 
 // ---------- Login ----------
@@ -332,7 +332,25 @@ if (qs("loginBtn")) {
         return;
       }
     } catch (superAdminErr) {
-      // Super-admin login failed, continue to manager login
+      // Super-admin login failed, continue to admin login
+    }
+
+    // Try admin login (no IP restriction)
+    try {
+      const adminResult = await apiPost("/admins/login", { username: user, password: pass });
+      if (adminResult && adminResult.role === "admin") {
+        saveSession({ 
+          role: "admin", 
+          name: adminResult.name || "Admin",
+          username: adminResult.username || user,
+          regions: adminResult.regions || [],
+          token: adminResult.token
+        });
+        window.location = "admin.html";
+        return;
+      }
+    } catch (adminErr) {
+      // Admin login failed, continue to manager login
     }
 
     // Try manager login (no IP restriction)
@@ -1357,7 +1375,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         displayItems.forEach(item => {
           const tr = document.createElement("tr");
           tr.className = "hover:bg-blue-50/30 transition-colors";
-          tr.style.backgroundColor = "#FEFCE8"; // Light yellow background
+          tr.style.backgroundColor = "white"; // White background
           const itemId = item._id || item.id || '';  // Use _id if available
           
           // Build row HTML - no Actions column
@@ -1374,7 +1392,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         // Add phones summary row
         const phonesRow = document.createElement("tr");
         phonesRow.className = "special-row";
-        phonesRow.style.background = "#FEF9C3";
+        phonesRow.style.background = "white";
         phonesRow.style.fontWeight = "700";
         phonesRow.innerHTML = `
           <td class="px-6 py-4"><strong>phones</strong></td>
@@ -1387,7 +1405,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         // Add simcards summary row
         const simcardsRow = document.createElement("tr");
         simcardsRow.className = "special-row";
-        simcardsRow.style.background = "#FEF9C3";
+        simcardsRow.style.background = "white";
         simcardsRow.style.fontWeight = "700";
         simcardsRow.innerHTML = `
           <td class="px-6 py-4"><strong>simcard</strong></td>
@@ -1763,10 +1781,10 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 
   // Manager page - Load and display stores (also accessible by super-admin)
-  if (path === "manager.html" && (session?.role === "manager" || session?.role === "super-admin")) {
+  if (path === "manager.html" && (session?.role === "manager" || session?.role === "super-admin" || session?.role === "admin")) {
     const managerCards = qs("managerCards");
     
-    // Handle super-admin viewing manager dashboard
+    // Handle super-admin or admin viewing manager dashboard
     const urlParams = new URLSearchParams(window.location.search);
     const viewAs = urlParams.get('view_as');
     
@@ -1778,22 +1796,38 @@ document.addEventListener("DOMContentLoaded", async () => {
     const notice = qs("viewingAsNotice");
     if (notice) notice.style.display = "none";
     
-    if (session?.role === "super-admin" && viewAs) {
-      // Only show these when super-admin is viewing another manager's dashboard
-      // Hide manager-specific navigation for super-admin
+    if ((session?.role === "super-admin" || session?.role === "admin") && viewAs) {
+      // Only show these when super-admin or admin is viewing another manager's dashboard
+      // Hide manager-specific navigation for super-admin/admin
       const navLinks = qs("managerNavLinks");
       if (navLinks) navLinks.style.display = "none";
       
-      // Show back to super-admin link only when viewing as another manager
-      if (backLink) backLink.style.display = "flex";
+      // Show back link only when viewing as another manager
+      if (backLink) {
+        if (session?.role === "admin") {
+          backLink.href = "admin.html";
+          backLink.innerHTML = '<i class="fa-solid fa-arrow-left mr-2"></i> Back to Admin';
+        } else {
+          backLink.href = "super-admin.html";
+          backLink.innerHTML = '<i class="fa-solid fa-arrow-left mr-2"></i> Back to Super Admin';
+        }
+        backLink.style.display = "flex";
+      }
       
-      // Hide add store button for super-admin (they can't add stores for managers)
+      // Hide add store button for super-admin/admin (they can't add stores for managers)
       const addStoreBtn = qs("addStoreBtn");
       if (addStoreBtn) addStoreBtn.style.display = "none";
       
       // Update title if viewing as another manager
       const title = qs("dashboardTitle");
-      if (title) title.textContent = `Manager Dashboard — ${viewAs} (Viewing as Super Admin)`;
+      if (title) {
+        const roleText = session?.role === "admin" ? "Admin" : "Super Admin";
+        title.textContent = `Welcome, ${viewAs}`;
+        const subtitle = qs("managerSubtitle");
+        if (subtitle) {
+          subtitle.textContent = `Viewing as ${roleText}`;
+        }
+      }
       
       if (notice) {
         notice.textContent = `Viewing as: ${viewAs}`;
@@ -1803,6 +1837,13 @@ document.addEventListener("DOMContentLoaded", async () => {
       // Regular manager login - ensure back link is hidden
       if (backLink) backLink.style.display = "none";
       if (notice) notice.style.display = "none";
+      
+      // Show manager name in welcome message
+      const title = qs("dashboardTitle");
+      if (title) {
+        const managerName = session.name || session.username || 'Manager';
+        title.textContent = `Welcome, ${managerName}`;
+      }
     }
     
     window.renderStores = async function() {
@@ -1824,9 +1865,9 @@ document.addEventListener("DOMContentLoaded", async () => {
         const viewAs = urlParams.get('view_as');
         
         // Get manager username from session and filter stores
-        // If super-admin is viewing, use the view_as parameter instead
+        // If super-admin or admin is viewing, use the view_as parameter instead
         let managerUsername = session?.username;
-        if (session?.role === 'super-admin' && viewAs) {
+        if ((session?.role === 'super-admin' || session?.role === 'admin') && viewAs) {
           managerUsername = viewAs;
         }
         const stores = await loadStores(managerUsername);
@@ -1837,9 +1878,9 @@ document.addEventListener("DOMContentLoaded", async () => {
           return;
         }
         
-        // Build query params for navigation (preserve view_as if super-admin)
+        // Build query params for navigation (preserve view_as if super-admin or admin)
         const navParams = new URLSearchParams();
-        if (session?.role === 'super-admin' && viewAs) {
+        if ((session?.role === 'super-admin' || session?.role === 'admin') && viewAs) {
           navParams.set('view_as', viewAs);
         }
         const navQuery = navParams.toString() ? '&' + navParams.toString() : '';
@@ -1851,7 +1892,7 @@ document.addEventListener("DOMContentLoaded", async () => {
           const displayName = `${escapedName}-${totalBoxes}`;
           const allowedIp = escapeHtml(store.allowed_ip || 'Not set');
           return `
-          <div class="bg-white rounded-xl border border-slate-200 shadow-sm hover:shadow-xl transition-all duration-300 overflow-hidden mb-6" data-store-name="${escapedName}">
+          <div class="bg-white rounded-xl border-2 border-slate-700 shadow-sm hover:shadow-xl transition-all duration-300 overflow-hidden mb-6" data-store-name="${escapedName}">
             <div class="bg-gradient-to-r from-blue-50 to-slate-50 px-6 py-5 border-b border-slate-200">
               <div class="flex items-center justify-between">
                 <div>
@@ -1861,7 +1902,7 @@ document.addEventListener("DOMContentLoaded", async () => {
                     <span>Allowed IP: <strong class="text-slate-900">${allowedIp}</strong></span>
                   </div>
                 </div>
-                <button onclick="window.location='store-inventory.html?store=${encodeURIComponent(escapedName)}${navQuery}'" class="flex items-center gap-2 px-5 py-2.5 text-sm font-semibold text-slate-700 bg-slate-50 border border-slate-300 rounded-lg hover:bg-slate-100 hover:border-slate-400 transition-all duration-200">
+                <button onclick="window.location='store-inventory.html?store=${encodeURIComponent(escapedName)}${navQuery}'" class="flex items-center gap-2 px-5 py-2.5 text-sm font-semibold text-slate-700 bg-white border-2 border-slate-300 rounded-lg hover:bg-slate-50 hover:border-slate-400 hover:shadow-lg hover:scale-105 transition-all duration-200">
                   <i class="fa-solid fa-boxes text-slate-600"></i>
                   Manage Inventory
                 </button>
@@ -1914,15 +1955,15 @@ document.addEventListener("DOMContentLoaded", async () => {
               </div>
             </div>
             <div class="bg-slate-50 px-6 py-4 border-t border-slate-200 flex flex-wrap items-center justify-center gap-3">
-              <button class="manage-store-btn flex items-center gap-2 px-6 py-2.5 text-sm font-semibold text-slate-700 bg-slate-50 border border-slate-300 rounded-lg hover:bg-slate-100 hover:border-slate-400 transition-all duration-200" data-store-name="${escapedName}" onclick="toggleStoreDetails('${escapedName}')">
+              <button class="manage-store-btn flex items-center gap-2 px-6 py-2.5 text-sm font-semibold text-slate-700 bg-white border-2 border-slate-300 rounded-lg hover:bg-slate-50 hover:border-slate-400 hover:shadow-lg hover:scale-105 transition-all duration-200" data-store-name="${escapedName}" onclick="toggleStoreDetails('${escapedName}')">
                 <i class="fa-solid fa-chart-bar text-slate-600"></i>
                 Manage Store
               </button>
-              <button class="btn-edit-store flex items-center gap-2 px-6 py-2.5 text-sm font-semibold text-slate-700 bg-slate-50 border border-slate-300 rounded-lg hover:bg-slate-100 hover:border-slate-400 transition-all duration-200" data-store-name="${escapedName}" data-store-boxes="${totalBoxes}" data-store-username="${escapeHtml(store.username || '')}" data-store-ip="${escapeHtml(store.allowed_ip || '')}">
+              <button class="btn-edit-store flex items-center gap-2 px-6 py-2.5 text-sm font-semibold text-slate-700 bg-white border-2 border-slate-300 rounded-lg hover:bg-slate-50 hover:border-slate-400 hover:shadow-lg hover:scale-105 transition-all duration-200" data-store-name="${escapedName}" data-store-boxes="${totalBoxes}" data-store-username="${escapeHtml(store.username || '')}" data-store-ip="${escapeHtml(store.allowed_ip || '')}">
                 <i class="fa-solid fa-edit text-slate-600"></i>
                 Edit Store
               </button>
-              <button class="btn-remove-store flex items-center gap-2 px-6 py-2.5 text-sm font-semibold text-slate-700 bg-slate-50 border border-slate-300 rounded-lg hover:bg-slate-100 hover:border-slate-400 transition-all duration-200" data-store-name="${escapedName}">
+              <button class="btn-remove-store flex items-center gap-2 px-6 py-2.5 text-sm font-semibold text-slate-700 bg-white border-2 border-slate-300 rounded-lg hover:bg-slate-50 hover:border-slate-400 hover:shadow-lg hover:scale-105 transition-all duration-200" data-store-name="${escapedName}">
                 <i class="fa-solid fa-trash text-slate-600"></i>
                 Remove Store
               </button>
@@ -2203,8 +2244,8 @@ document.addEventListener("DOMContentLoaded", async () => {
   // Store EOD List page
   if (path === "store-eod-list.html") {
     const session = loadSession();
-    if (!session || (session.role !== 'manager' && session.role !== 'super-admin')) {
-      showError('Access denied. Manager or Super Admin login required.');
+    if (!session || (session.role !== 'manager' && session.role !== 'super-admin' && session.role !== 'admin')) {
+      showError('Access denied. Manager, Admin, or Super Admin login required.');
       window.location = 'login.html';
     }
     
@@ -2220,7 +2261,14 @@ document.addEventListener("DOMContentLoaded", async () => {
     
     // Show "Back to Super Admin" button only if user is super-admin AND view_as is present
     if (backToSuperAdmin) {
-      if (viewAs && session?.role === 'super-admin') {
+      if (viewAs && (session?.role === 'super-admin' || session?.role === 'admin')) {
+        if (session?.role === 'admin') {
+          backToSuperAdmin.href = "admin.html";
+          backToSuperAdmin.innerHTML = '<i class="fa-solid fa-arrow-left mr-2"></i> Back to Admin';
+        } else {
+          backToSuperAdmin.href = "super-admin.html";
+          backToSuperAdmin.innerHTML = '<i class="fa-solid fa-arrow-left mr-2"></i> Back to Super Admin';
+        }
         backToSuperAdmin.classList.remove("hidden");
         backToSuperAdmin.classList.add("md:flex");
       } else {
@@ -2377,8 +2425,8 @@ document.addEventListener("DOMContentLoaded", async () => {
   // Store EOD Detail page
   if (path === "store-eod-detail.html") {
     const session = loadSession();
-    if (!session || (session.role !== 'manager' && session.role !== 'super-admin')) {
-      showError('Access denied. Manager or Super Admin login required.');
+    if (!session || (session.role !== 'manager' && session.role !== 'super-admin' && session.role !== 'admin')) {
+      showError('Access denied. Manager, Admin, or Super Admin login required.');
       window.location = 'login.html';
     }
     
@@ -2395,7 +2443,14 @@ document.addEventListener("DOMContentLoaded", async () => {
     
     // Show "Back to Super Admin" button only if user is super-admin AND view_as is present
     if (backToSuperAdmin) {
-      if (viewAs && session?.role === 'super-admin') {
+      if (viewAs && (session?.role === 'super-admin' || session?.role === 'admin')) {
+        if (session?.role === 'admin') {
+          backToSuperAdmin.href = "admin.html";
+          backToSuperAdmin.innerHTML = '<i class="fa-solid fa-arrow-left mr-2"></i> Back to Admin';
+        } else {
+          backToSuperAdmin.href = "super-admin.html";
+          backToSuperAdmin.innerHTML = '<i class="fa-solid fa-arrow-left mr-2"></i> Back to Super Admin';
+        }
         backToSuperAdmin.classList.remove("hidden");
         backToSuperAdmin.classList.add("md:flex");
       } else {
@@ -2672,8 +2727,8 @@ document.addEventListener("DOMContentLoaded", async () => {
   // Store Inventory page (Manager view)
   if (path === "store-inventory.html") {
     const session = loadSession();
-    if (!session || (session.role !== 'manager' && session.role !== 'super-admin')) {
-      showError('Access denied. Manager or Super Admin login required.');
+    if (!session || (session.role !== 'manager' && session.role !== 'super-admin' && session.role !== 'admin')) {
+      showError('Access denied. Manager, Admin, or Super Admin login required.');
       window.location = 'login.html';
     }
     
@@ -2689,7 +2744,14 @@ document.addEventListener("DOMContentLoaded", async () => {
     
     // Show "Back to Super Admin" button only if user is super-admin AND view_as is present
     if (backToSuperAdmin) {
-      if (viewAs && session?.role === 'super-admin') {
+      if (viewAs && (session?.role === 'super-admin' || session?.role === 'admin')) {
+        if (session?.role === 'admin') {
+          backToSuperAdmin.href = "admin.html";
+          backToSuperAdmin.innerHTML = '<i class="fa-solid fa-arrow-left mr-2"></i> Back to Admin';
+        } else {
+          backToSuperAdmin.href = "super-admin.html";
+          backToSuperAdmin.innerHTML = '<i class="fa-solid fa-arrow-left mr-2"></i> Back to Super Admin';
+        }
         backToSuperAdmin.style.display = "inline-block";
       } else {
         backToSuperAdmin.style.display = "none";
@@ -2792,7 +2854,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         displayItems.forEach(item => {
           const tr = document.createElement("tr");
           tr.className = "hover:bg-blue-50/30 transition-colors";
-          tr.style.backgroundColor = "#FEFCE8"; // Light yellow background
+          tr.style.backgroundColor = "white"; // White background
           const itemId = item._id || item.id || '';
           tr.innerHTML = `
             <td class="px-6 py-4 whitespace-nowrap text-sm text-slate-900">${escapeHtml(item.name || '')}</td>
@@ -2801,8 +2863,14 @@ document.addEventListener("DOMContentLoaded", async () => {
             <td class="px-6 py-4 whitespace-nowrap text-center"><input type="number" class="stage-input w-full px-3 py-2 border border-slate-300 rounded-md text-center bg-white" value="${item.quantity || 0}" data-item-id="${escapeHtml(itemId)}" data-item-sku="${escapeHtml(item.sku || '')}" data-item-name="${escapeHtml(item.name || '')}" /></td>
             <td class="px-6 py-4 whitespace-nowrap text-center">
               <div class="flex items-center justify-center gap-2">
-                <button onclick="handleEditInventoryItem('${escapeHtml(itemId)}', '${escapeHtml(item.sku || '')}', '${escapeHtml(item.name || '')}')" class="px-4 py-2 text-sm font-semibold rounded-md transition-all duration-200" style="background:#ffc107;color:#000;">Edit</button>
-                <button onclick="handleRemoveInventoryItem('${escapeHtml(item.sku || '')}', '${escapeHtml(item.name || '')}')" class="px-4 py-2 text-sm font-semibold text-white rounded-md transition-all duration-200" style="background:#dc3545;">Remove</button>
+                <button onclick="handleEditInventoryItem('${escapeHtml(itemId)}', '${escapeHtml(item.sku || '')}', '${escapeHtml(item.name || '')}')" class="flex items-center gap-2 px-6 py-2.5 text-sm font-semibold text-slate-700 bg-white border-2 border-slate-300 rounded-lg hover:bg-slate-50 hover:border-slate-400 hover:shadow-lg hover:scale-105 transition-all duration-200">
+                  <i class="fa-solid fa-edit text-slate-600"></i>
+                  Edit
+                </button>
+                <button onclick="handleRemoveInventoryItem('${escapeHtml(item.sku || '')}', '${escapeHtml(item.name || '')}')" class="flex items-center gap-2 px-6 py-2.5 text-sm font-semibold text-slate-700 bg-white border-2 border-slate-300 rounded-lg hover:bg-slate-50 hover:border-slate-400 hover:shadow-lg hover:scale-105 transition-all duration-200">
+                  <i class="fa-solid fa-trash text-slate-600"></i>
+                  Remove
+                </button>
               </div>
             </td>
           `;
@@ -2812,7 +2880,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         // Add phones summary row
         const phonesRow = document.createElement("tr");
         phonesRow.className = "special-row";
-        phonesRow.style.background = "#FEF9C3";
+        phonesRow.style.background = "white";
         phonesRow.style.fontWeight = "700";
         phonesRow.innerHTML = `
           <td class="px-6 py-4"><strong>phones</strong></td>
@@ -2826,7 +2894,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         // Add simcards summary row
         const simcardsRow = document.createElement("tr");
         simcardsRow.className = "special-row";
-        simcardsRow.style.background = "#FEF9C3";
+        simcardsRow.style.background = "white";
         simcardsRow.style.fontWeight = "700";
         simcardsRow.innerHTML = `
           <td class="px-6 py-4"><strong>simcard</strong></td>

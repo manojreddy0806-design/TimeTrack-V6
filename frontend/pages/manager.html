@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Manager Dashboard — TimeTrack</title>
+    <title>Manager Dashboard — Pramaan</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script>window.FontAwesomeConfig = { autoReplaceSvg: 'nest' };</script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/js/all.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
@@ -221,7 +221,7 @@
                         <div class="bg-white rounded-xl p-2.5 flex items-center justify-center hover:scale-110 transition-transform duration-200 shadow-lg">
                             <i class="fa-solid fa-clock text-blue-600 text-xl"></i>
                         </div>
-                        <span class="text-2xl font-bold text-white">TimeTrack</span>
+                        <span class="text-2xl font-bold text-white">Pramaan</span>
                     </div>
                     <div class="flex items-center space-x-4">
                         <nav id="managerNavLinks" class="hidden md:flex items-center space-x-3 bg-blue-700/20 px-3 py-2 rounded-xl backdrop-blur-sm">
@@ -242,9 +242,9 @@
                                 Employees
                             </a>
                         </nav>
-                        <a href="super-admin.html" id="backToSuperAdmin" class="hidden md:flex items-center px-4 py-2 text-sm font-semibold text-blue-50 hover:text-white hover:bg-blue-400/50 rounded-lg transition-all duration-300 mr-4">
+                        <a href="#" id="backToSuperAdmin" class="hidden md:flex items-center px-4 py-2 text-sm font-semibold text-blue-50 hover:text-white hover:bg-blue-400/50 rounded-lg transition-all duration-300 mr-4">
                             <i class="fa-solid fa-arrow-left mr-2"></i>
-                            Back to Super Admin
+                            Back
                         </a>
                         <button class="hidden md:flex items-center px-6 py-2.5 text-sm font-semibold text-blue-50 hover:text-white hover:bg-blue-400/50 rounded-lg transition-all duration-300 hover:scale-105 hover:shadow-lg transform border border-white/20" onclick="logoutApp()">
                             <i class="fa-solid fa-arrow-right-from-bracket mr-2"></i>
@@ -267,9 +267,9 @@
                             <i class="fa-solid fa-user-tie text-white text-3xl"></i>
                         </div>
                         <h1 id="dashboardTitle" class="text-4xl font-bold text-slate-900 mb-2">
-                            Manager Dashboard
+                            Welcome
                         </h1>
-                        <p class="text-slate-600 text-lg">Manage your stores and monitor daily operations</p>
+                        <p id="managerSubtitle" class="text-slate-600 text-lg">Manage your stores and monitor daily operations</p>
                     </div>
                 </div>
             </div>
@@ -277,7 +277,7 @@
             <!-- Quick Actions Section -->
             <div class="mb-8 flex items-center justify-between">
                 <h2 class="text-2xl font-semibold text-slate-900">Store Overview</h2>
-                <button id="addStoreBtn" onclick="handleAddStore()" class="flex items-center gap-2 px-6 py-3 text-sm font-semibold text-slate-700 bg-slate-50 border border-slate-300 rounded-lg hover:bg-slate-100 hover:border-slate-400 transition-all duration-200">
+                <button id="addStoreBtn" onclick="handleAddStore()" class="flex items-center gap-2 px-6 py-3 text-sm font-semibold text-slate-700 bg-white border-2 border-slate-300 rounded-lg hover:bg-slate-50 hover:border-slate-400 hover:shadow-lg hover:scale-105 transition-all duration-200">
                     <i class="fa-solid fa-plus text-slate-600"></i>
                     Add Store
                 </button>
@@ -398,6 +398,39 @@
             const activeLink = links.find(link => link.getAttribute('href').split('/').pop() === currentPath) || links[0];
             if (activeLink) {
                 activeLink.classList.add('nav-link-active');
+            }
+        }
+        
+        // Set manager name if not viewing as someone else (script.js handles view_as case)
+        const session = loadSession();
+        const urlParams = new URLSearchParams(window.location.search);
+        const viewAs = urlParams.get('view_as');
+        
+        // If viewing as admin or super-admin (using view_as), hide manager nav links and show back button
+        if (session && (session.role === 'admin' || session.role === 'super-admin') && viewAs) {
+            const managerNavLinks = document.getElementById('managerNavLinks');
+            const backToSuperAdmin = document.getElementById('backToSuperAdmin');
+            
+            if (managerNavLinks) {
+                managerNavLinks.style.display = 'none';
+            }
+            if (backToSuperAdmin) {
+                backToSuperAdmin.classList.remove('hidden');
+                if (session.role === 'admin') {
+                    backToSuperAdmin.href = 'admin.html';
+                    backToSuperAdmin.innerHTML = '<i class="fa-solid fa-arrow-left mr-2"></i> Back to Admin';
+                } else {
+                    backToSuperAdmin.href = 'super-admin.html';
+                    backToSuperAdmin.innerHTML = '<i class="fa-solid fa-arrow-left mr-2"></i> Back to Super Admin';
+                }
+            }
+        }
+        
+        if (session && session.role === 'manager' && !viewAs) {
+            const managerName = session.name || session.username || 'Manager';
+            const title = document.getElementById('dashboardTitle');
+            if (title && title.textContent === 'Welcome') {
+                title.textContent = `Welcome, ${managerName}`;
             }
         }
     </script>

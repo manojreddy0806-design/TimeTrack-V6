@@ -43,8 +43,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Ar
 .simple-card-header h3{font-size:1.4rem;margin:0}
 .simple-card-header .store-status{background:rgba(255,255,255,0.2);padding:6px 12px;border-radius:20px;font-size:0.85rem;font-weight:600}
 .simple-card-actions{padding:20px 24px;display:flex;gap:12px;align-items:center;justify-content:center;background:#f8f9fa;border-top:1px solid #e9ecef}
-.manage-store-btn{background:#007bff;color:white;padding:12px 24px;border-radius:8px;border:none;cursor:pointer;font-weight:600;font-size:1rem;transition:all 0.2s ease;display:flex;align-items:center;gap:8px}
-.manage-store-btn:hover{background:#0056b3;transform:translateY(-1px);box-shadow:0 4px 12px rgba(0,123,255,0.3)}
+.manage-store-btn{background:white;color:#475569;padding:12px 24px;border-radius:8px;border:2px solid #CBD5E1;cursor:pointer;font-weight:600;font-size:1rem;transition:all 0.2s ease;display:flex;align-items:center;gap:8px}
+.manage-store-btn:hover{background:#F8FAFC;border-color:#94A3B8;transform:scale(1.05);box-shadow:0 10px 15px -3px rgba(0,0,0,0.1)}
 .manage-store-btn .icon{font-size:1.1rem}
 
 /* Detailed store card content - hidden by default */

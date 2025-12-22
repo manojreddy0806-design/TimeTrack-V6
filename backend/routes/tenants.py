@@ -490,7 +490,7 @@ def stripe_webhook():
                     email_body = f"""
                     <html>
                     <body>
-                        <h2>Welcome to TimeTrack!</h2>
+                        <h2>Welcome to Pramaan!</h2>
                         <p>Your account has been successfully created.</p>
                         <p><strong>Company:</strong> {tenant.company_name}</p>
                         <p><strong>Plan:</strong> {plan.capitalize()}</p>
@@ -505,7 +505,7 @@ def stripe_webhook():
                     
                     email_sent = send_email(
                         to_email=tenant.email,
-                        subject="Welcome to TimeTrack - Your Account is Ready",
+                        subject="Welcome to Pramaan - Your Account is Ready",
                         body_html=email_body
                     )
                     

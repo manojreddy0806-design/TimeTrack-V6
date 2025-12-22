@@ -119,7 +119,7 @@ def add_eod():
         return jsonify({"error": f"Failed to create EOD report: {str(e)}"}), 500
 
 @bp.get("/cash-report")
-@require_auth(roles=['super-admin'])
+@require_auth(roles=['super-admin', 'admin'])
 def get_cash_report():
     """
     Get cash report data for all stores for a date range (7 days).
@@ -146,19 +146,70 @@ def get_cash_report():
         else:
             end_date = datetime.now().date()
         
-        # Get all stores for this tenant
-        stores = get_stores(tenant_id=tenant_id)
-        store_names = [store["name"] for store in stores]
+        # Get stores for this tenant, optionally filtered by manager or admin regions
+        user_role = g.current_user.get('role')
+        manager_username = request.args.get("manager_username")
         
-        # Get EOD reports for the date range
+        # If admin, filter stores by managers in assigned regions
+        if user_role == 'admin':
+            admin_regions = g.current_user.get('regions', [])
+            if not admin_regions:
+                # Admin with no regions sees no stores
+                return jsonify({
+                    "start_date": start_date.isoformat(),
+                    "end_date": end_date.isoformat(),
+                    "stores": [],
+                    "data": {}
+                }), 200
+            
+            # Get all managers in admin's assigned regions
+            from ..models import Manager
+            managers = Manager.query.filter_by(tenant_id=tenant_id).filter(
+                Manager.is_super_admin == False,
+                Manager.is_admin == False,
+                Manager.location.in_(admin_regions)
+            ).all()
+            
+            manager_usernames = [m.username for m in managers]
+            if not manager_usernames:
+                # No managers in assigned regions
+                return jsonify({
+                    "start_date": start_date.isoformat(),
+                    "end_date": end_date.isoformat(),
+                    "stores": [],
+                    "data": {}
+                }), 200
+            
+            # Get stores for these managers
+            from ..models import Store
+            stores = Store.query.filter_by(tenant_id=tenant_id).filter(
+                Store.manager_username.in_(manager_usernames)
+            ).all()
+            store_names = [store.name for store in stores]
+        elif manager_username:
+            # Filter by specific manager
+            stores = get_stores(tenant_id=tenant_id, manager_username=manager_username)
+            store_names = [store["name"] for store in stores]
+        else:
+            # Super-admin sees all stores
+            stores = get_stores(tenant_id=tenant_id)
+            store_names = [store["name"] for store in stores]
+        
+        # Get EOD reports for the date range, filtered by store names if admin
         start_date_str = start_date.isoformat()
         end_date_str = end_date.isoformat()
         
-        eods = EOD.query.filter(
+        eod_query = EOD.query.filter(
             EOD.tenant_id == tenant_id,
             EOD.report_date >= start_date_str,
             EOD.report_date <= end_date_str
-        ).all()
+        )
+        
+        # If admin, only show EODs for stores in their regions
+        if user_role == 'admin' and store_names:
+            eod_query = eod_query.filter(EOD.store_id.in_(store_names))
+        
+        eods = eod_query.all()
         
         # Group data by date and store
         report_data = {}
@@ -206,7 +257,7 @@ def get_cash_report():
         return jsonify({"error": f"Failed to get cash report: {str(e)}"}), 500
 
 @bp.get("/card-report")
-@require_auth(roles=['super-admin'])
+@require_auth(roles=['super-admin', 'admin'])
 def get_card_report():
     """
     Get card report data for all stores for a date range (7 days).
@@ -234,19 +285,70 @@ def get_card_report():
         else:
             end_date = datetime.now().date()
         
-        # Get all stores for this tenant
-        stores = get_stores(tenant_id=tenant_id)
-        store_names = [store["name"] for store in stores]
+        # Get stores for this tenant, optionally filtered by manager or admin regions
+        user_role = g.current_user.get('role')
+        manager_username = request.args.get("manager_username")
         
-        # Get EOD reports for the date range
+        # If admin, filter stores by managers in assigned regions
+        if user_role == 'admin':
+            admin_regions = g.current_user.get('regions', [])
+            if not admin_regions:
+                # Admin with no regions sees no stores
+                return jsonify({
+                    "start_date": start_date.isoformat(),
+                    "end_date": end_date.isoformat(),
+                    "stores": [],
+                    "data": {}
+                }), 200
+            
+            # Get all managers in admin's assigned regions
+            from ..models import Manager
+            managers = Manager.query.filter_by(tenant_id=tenant_id).filter(
+                Manager.is_super_admin == False,
+                Manager.is_admin == False,
+                Manager.location.in_(admin_regions)
+            ).all()
+            
+            manager_usernames = [m.username for m in managers]
+            if not manager_usernames:
+                # No managers in assigned regions
+                return jsonify({
+                    "start_date": start_date.isoformat(),
+                    "end_date": end_date.isoformat(),
+                    "stores": [],
+                    "data": {}
+                }), 200
+            
+            # Get stores for these managers
+            from ..models import Store
+            stores = Store.query.filter_by(tenant_id=tenant_id).filter(
+                Store.manager_username.in_(manager_usernames)
+            ).all()
+            store_names = [store.name for store in stores]
+        elif manager_username:
+            # Filter by specific manager
+            stores = get_stores(tenant_id=tenant_id, manager_username=manager_username)
+            store_names = [store["name"] for store in stores]
+        else:
+            # Super-admin sees all stores
+            stores = get_stores(tenant_id=tenant_id)
+            store_names = [store["name"] for store in stores]
+        
+        # Get EOD reports for the date range, filtered by store names if admin
         start_date_str = start_date.isoformat()
         end_date_str = end_date.isoformat()
         
-        eods = EOD.query.filter(
+        eod_query = EOD.query.filter(
             EOD.tenant_id == tenant_id,
             EOD.report_date >= start_date_str,
             EOD.report_date <= end_date_str
-        ).all()
+        )
+        
+        # If admin, only show EODs for stores in their regions
+        if user_role == 'admin' and store_names:
+            eod_query = eod_query.filter(EOD.store_id.in_(store_names))
+        
+        eods = eod_query.all()
         
         # Group data by date and store
         report_data = {}

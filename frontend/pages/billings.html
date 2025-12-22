@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Billings — TimeTrack</title>
+    <title>Billings — Pramaan</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script>window.FontAwesomeConfig = { autoReplaceSvg: 'nest' };</script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/js/all.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
@@ -67,11 +67,11 @@
                         <div class="bg-white rounded-xl p-2.5 flex items-center justify-center hover:scale-110 transition-transform duration-200 shadow-lg">
                             <i class="fa-solid fa-clock text-blue-600 text-xl"></i>
                         </div>
-                        <span class="text-2xl font-bold text-white">TimeTrack</span>
+                        <span class="text-2xl font-bold text-white">Pramaan</span>
                     </div>
                     <div class="flex items-center space-x-4">
-                        <nav class="hidden md:flex items-center space-x-3 bg-blue-700/20 px-3 py-2 rounded-xl backdrop-blur-sm">
-                            <a href="super-admin.html" data-nav-link class="relative z-10 flex items-center px-6 py-2.5 text-sm font-semibold text-blue-50 hover:text-white hover:bg-blue-400/50 rounded-lg transition-all duration-300 hover:scale-105 hover:shadow-lg transform">
+                        <nav class="hidden md:flex items-center space-x-3 bg-blue-700/20 px-3 py-2 rounded-xl backdrop-blur-sm" id="main-nav">
+                            <a href="#" data-nav-link data-dashboard-link class="relative z-10 flex items-center px-6 py-2.5 text-sm font-semibold text-blue-50 hover:text-white hover:bg-blue-400/50 rounded-lg transition-all duration-300 hover:scale-105 hover:shadow-lg transform">
                                 <i class="fa-solid fa-chart-pie mr-2"></i>
                                 Dashboard
                             </a>
@@ -79,7 +79,7 @@
                                 <i class="fa-solid fa-users mr-2"></i>
                                 All Managers
                             </a>
-                            <a href="super-admin.html#subscription" class="relative z-10 flex items-center px-6 py-2.5 text-sm font-semibold text-blue-50 hover:text-white hover:bg-blue-400/50 rounded-lg transition-all duration-300 hover:scale-105 hover:shadow-lg transform">
+                            <a href="#" data-subscription-link class="relative z-10 flex items-center px-6 py-2.5 text-sm font-semibold text-blue-50 hover:text-white hover:bg-blue-400/50 rounded-lg transition-all duration-300 hover:scale-105 hover:shadow-lg transform">
                                 <i class="fa-solid fa-credit-card mr-2"></i>
                                 Subscription
                             </a>
@@ -227,6 +227,7 @@
                             </div>
                             <div>
                                 <h3 class="font-semibold text-slate-900">${escapeHtml(manager.name)}</h3>
+                                ${manager.location ? `<p class="text-sm text-slate-600"><i class="fa-solid fa-location-dot text-primary mr-1"></i>${escapeHtml(manager.location)}</p>` : ''}
                                 <p class="text-sm text-slate-500">${manager.stores_count} store(s)</p>
                             </div>
                         </div>
@@ -240,11 +241,11 @@
                     <div class="space-y-2 text-sm">
                         <div class="flex justify-between">
                             <span class="text-slate-600">Total Paid:</span>
-                            <span class="font-semibold text-green-600">${formatCurrency(paidAmount)}</span>
+                            <span class="font-semibold text-slate-900">${formatCurrency(paidAmount)}</span>
                         </div>
                         <div class="flex justify-between">
                             <span class="text-slate-600">Unpaid Bills:</span>
-                            <span class="font-semibold ${unpaidCount > 0 ? 'text-orange-600' : 'text-green-600'}">${unpaidCount}</span>
+                            <span class="font-semibold text-black">${unpaidCount}</span>
                         </div>
                     </div>
                     <div class="mt-4 pt-4 border-t border-card-border">
@@ -322,7 +323,7 @@
                     
                     if (billing.paid) {
                         // Show paid status with amount
-                        billTd.innerHTML = `<span class="text-green-600 font-semibold">Paid - ${formatCurrency(billing.amount)}</span>`;
+                        billTd.innerHTML = `<span class="text-slate-900 font-semibold">Paid - ${formatCurrency(billing.amount)}</span>`;
                     } else {
                         // Show unpaid status
                         billTd.innerHTML = '<span class="text-orange-600 font-semibold">Unpaid</span>';
@@ -359,7 +360,31 @@
         }
 
         // Initialize
+        // Update navigation based on role
+        function updateNavForRole() {
+            const session = loadSession();
+            if (session) {
+                const dashboardLink = document.querySelector('[data-dashboard-link]');
+                const subscriptionLink = document.querySelector('[data-subscription-link]');
+                
+                if (session.role === 'admin') {
+                    if (dashboardLink) dashboardLink.href = 'admin.html';
+                    if (subscriptionLink) subscriptionLink.style.display = 'none';
+                } else if (session.role === 'super-admin') {
+                    if (dashboardLink) dashboardLink.href = 'super-admin.html';
+                    if (subscriptionLink) {
+                        subscriptionLink.href = '#';
+                        subscriptionLink.onclick = function() { 
+                            window.location = 'super-admin.html#subscription'; 
+                            return false; 
+                        };
+                    }
+                }
+            }
+        }
+        
         document.addEventListener('DOMContentLoaded', () => {
+            updateNavForRole();
             loadManagers();
         });
     </script>

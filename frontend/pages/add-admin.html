@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Add Manager</title>
+    <title>Add Admin</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
         window.FontAwesomeConfig = {
@@ -99,9 +99,9 @@
                                 <i class="fa-solid fa-chart-pie mr-2"></i>
                                 Dashboard
                             </a>
-                            <a href="add-manager.html" data-nav-link class="relative z-10 flex items-center px-6 py-2.5 text-sm font-semibold text-blue-50 hover:text-white hover:bg-blue-400/50 rounded-lg transition-all duration-300 hover:scale-105 hover:shadow-lg transform">
-                                <i class="fa-solid fa-user-plus mr-2"></i>
-                                Add Manager
+                            <a href="all-admins.html" data-nav-link class="relative z-10 flex items-center px-6 py-2.5 text-sm font-semibold text-blue-50 hover:text-white hover:bg-blue-400/50 rounded-lg transition-all duration-300 hover:scale-105 hover:shadow-lg transform">
+                                <i class="fa-solid fa-user-shield mr-2"></i>
+                                Admins
                             </a>
                         </nav>
                         <button class="hidden md:flex items-center px-6 py-2.5 text-sm font-semibold text-blue-50 hover:text-white hover:bg-blue-400/50 rounded-lg transition-all duration-300 hover:scale-105 hover:shadow-lg transform border border-white/20" onclick="logoutApp()">
@@ -123,8 +123,8 @@
                         <i class="fa-solid fa-user-tie text-white text-3xl"></i>
                     </div>
                     <div class="flex-1">
-                        <h1 id="pageTitle" class="text-4xl font-bold text-slate-900 mb-2">Add New Manager</h1>
-                        <p class="text-base text-slate-600">Create a new manager account with secure credentials</p>
+                        <h1 id="pageTitle" class="text-4xl font-bold text-slate-900 mb-2">Add New Admin</h1>
+                        <p class="text-base text-slate-600">Create a new admin account with region assignments</p>
                     </div>
                 </div>
             </div>
@@ -150,14 +150,14 @@
                     <div class="bg-blue-50 p-3 rounded-xl hover:bg-blue-100 transition-colors duration-200">
                         <i class="fa-solid fa-user-shield text-blue-600 text-2xl"></i>
                     </div>
-                    <h2 class="ml-4 text-2xl font-bold text-slate-900">Manager Information</h2>
+                    <h2 class="ml-4 text-2xl font-bold text-slate-900">Admin Information</h2>
                 </div>
 
                 <form id="add-manager-form" class="space-y-6">
                     <div class="group">
                         <label for="manager-name"
                             class="block text-sm font-bold text-slate-800 mb-2.5 group-focus-within:text-blue-600 transition-colors duration-200">
-                            Manager Name <span class="text-red-500">*</span>
+                            Admin Name <span class="text-red-500">*</span>
                         </label>
                         <input type="text" id="manager-name" name="manager-name" placeholder="Enter full name" required
                             class="animated-input block w-full px-5 py-3.5 text-base bg-slate-50 border-2 border-slate-300 rounded-xl focus:ring-4 focus:ring-blue-500/20 focus:border-blue-600 focus:bg-white focus:shadow-lg focus:-translate-y-0.5 focus:scale-[1.02] transition-all duration-300 ease-out placeholder:text-slate-400 hover:border-slate-400 hover:shadow-sm">
@@ -171,6 +171,38 @@
                         <input type="text" id="manager-username" name="manager-username"
                             placeholder="Choose a unique username" required
                             class="animated-input block w-full px-5 py-3.5 text-base bg-slate-50 border-2 border-slate-300 rounded-xl focus:ring-4 focus:ring-blue-500/20 focus:border-blue-600 focus:bg-white focus:shadow-lg focus:-translate-y-0.5 focus:scale-[1.02] transition-all duration-300 ease-out placeholder:text-slate-400 hover:border-slate-400 hover:shadow-sm">
+                    </div>
+
+                    <div class="group">
+                        <label for="manager-location"
+                            class="block text-sm font-bold text-slate-800 mb-2.5 group-focus-within:text-blue-600 transition-colors duration-200">
+                            Location
+                        </label>
+                        <input type="text" id="manager-location" name="manager-location"
+                            placeholder="Enter admin location (e.g., New York, Los Angeles)"
+                            class="animated-input block w-full px-5 py-3.5 text-base bg-slate-50 border-2 border-slate-300 rounded-xl focus:ring-4 focus:ring-blue-500/20 focus:border-blue-600 focus:bg-white focus:shadow-lg focus:-translate-y-0.5 focus:scale-[1.02] transition-all duration-300 ease-out placeholder:text-slate-400 hover:border-slate-400 hover:shadow-sm">
+                    </div>
+
+                    <div class="group">
+                        <label for="admin-regions"
+                            class="block text-sm font-bold text-slate-800 mb-2.5 group-focus-within:text-blue-600 transition-colors duration-200">
+                            Manager Locations <span class="text-red-500">*</span>
+                        </label>
+                        <div id="regions-container" class="flex flex-wrap gap-3 p-4 bg-slate-50 border-2 border-slate-300 rounded-xl min-h-[80px]">
+                            <div id="regions-loading" class="w-full text-center text-slate-500">
+                                <i class="fa-solid fa-spinner fa-spin mr-2"></i>
+                                Loading manager locations...
+                            </div>
+                        </div>
+                        <div class="mt-3 flex gap-2">
+                            <input type="text" id="new-region-input" placeholder="Add custom location..." 
+                                class="flex-1 px-4 py-2 text-sm bg-white border-2 border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 focus:outline-none transition-all">
+                            <button type="button" onclick="addCustomRegion()" 
+                                class="px-4 py-2 text-sm font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition shadow-sm">
+                                <i class="fa-solid fa-plus mr-1"></i> Add
+                            </button>
+                        </div>
+                        <p class="mt-2 text-xs text-slate-500">Click on manager locations to select them. Selected locations will be highlighted in blue. Admins will only see managers in selected locations.</p>
                     </div>
 
                     <div class="group">
@@ -198,9 +230,9 @@
                         <button type="submit" id="submit-btn"
                             class="flex-1 flex items-center justify-center px-8 py-4 text-base font-bold text-white bg-gradient-to-r from-blue-600 to-blue-700 rounded-xl hover:from-blue-700 hover:to-blue-800 hover:shadow-xl hover:scale-[1.03] active:scale-[0.98] transition-all duration-200 shadow-lg">
                             <i class="fa-solid fa-check mr-3 text-lg"></i>
-                            Add Manager
+                            Add Admin
                         </button>
-                        <button type="button" onclick="window.location='super-admin.html'"
+                        <button type="button" onclick="window.location='all-admins.html'"
                             class="px-8 py-4 text-base font-bold text-slate-700 bg-white border-2 border-slate-300 rounded-xl hover:bg-slate-50 hover:border-slate-400 hover:shadow-lg hover:scale-[1.03] active:scale-[0.98] transition-all duration-200">
                             Cancel
                         </button>
@@ -261,10 +293,107 @@
                 passwordInput.addEventListener('input', validatePasswords);
                 confirmPasswordInput.addEventListener('input', validatePasswords);
             }
+
+            // Allow Enter key to add custom region
+            const newRegionInput = document.getElementById('new-region-input');
+            if (newRegionInput) {
+                newRegionInput.addEventListener('keypress', function(e) {
+                    if (e.key === 'Enter') {
+                        e.preventDefault();
+                        addCustomRegion();
+                    }
+                });
+            }
         });
 
         let isEditMode = false;
         let editUsername = null;
+        let selectedRegions = new Set();
+        let availableRegions = [];
+
+        // Load available regions on page load
+        async function loadAvailableRegions() {
+            try {
+                const regions = await apiGet('/admins/available-regions');
+                availableRegions = regions;
+                renderRegionBoxes();
+            } catch (err) {
+                console.error('Failed to load regions:', err);
+                showStatus('Failed to load manager locations. Please refresh the page.', 'error');
+                availableRegions = [];
+                renderRegionBoxes();
+            }
+        }
+
+        function renderRegionBoxes() {
+            const container = document.getElementById('regions-container');
+            const loading = document.getElementById('regions-loading');
+            
+            if (loading) {
+                loading.remove();
+            }
+            
+            container.innerHTML = '';
+            
+            if (availableRegions.length === 0) {
+                container.innerHTML = '<p class="text-slate-500 text-sm">No manager locations found. Please create managers with locations first, or add a custom location below.</p>';
+                return;
+            }
+            
+            availableRegions.forEach(region => {
+                const isSelected = selectedRegions.has(region);
+                const box = document.createElement('div');
+                box.className = `px-4 py-2 rounded-lg cursor-pointer transition-all duration-200 font-medium text-sm ${
+                    isSelected 
+                        ? 'bg-blue-600 text-white shadow-md hover:bg-blue-700 hover:shadow-lg' 
+                        : 'bg-slate-200 text-slate-600 hover:bg-slate-300 hover:shadow-sm'
+                }`;
+                box.textContent = region;
+                box.dataset.region = region;
+                box.addEventListener('click', () => toggleRegion(region));
+                container.appendChild(box);
+            });
+        }
+
+        function toggleRegion(region) {
+            if (selectedRegions.has(region)) {
+                selectedRegions.delete(region);
+            } else {
+                selectedRegions.add(region);
+            }
+            renderRegionBoxes();
+        }
+
+        function addCustomRegion() {
+            const input = document.getElementById('new-region-input');
+            const region = input.value.trim();
+            
+            if (!region) {
+                return;
+            }
+            
+            // Add to available regions if not already there
+            if (!availableRegions.includes(region)) {
+                availableRegions.push(region);
+                availableRegions.sort(); // Keep sorted
+            }
+            
+            // Select it
+            selectedRegions.add(region);
+            
+            // Clear input
+            input.value = '';
+            
+            // Re-render boxes
+            renderRegionBoxes();
+        }
+
+        function getSelectedRegions() {
+            return Array.from(selectedRegions);
+        }
+
+        // Load regions on page load
+        loadAvailableRegions();
 
         const urlParams = new URLSearchParams(window.location.search);
         const editParam = urlParams.get('edit');
@@ -272,8 +401,8 @@
         if (editParam) {
             isEditMode = true;
             editUsername = editParam;
-            document.getElementById('pageTitle').textContent = 'Edit Manager';
-            document.getElementById('submit-btn').innerHTML = '<i class="fa-solid fa-check mr-2"></i> Update Manager';
+            document.getElementById('pageTitle').textContent = 'Edit Admin';
+            document.getElementById('submit-btn').innerHTML = '<i class="fa-solid fa-check mr-2"></i> Update Admin';
             document.getElementById('manager-username').disabled = true;
             document.getElementById('manager-password').required = false;
             document.getElementById('manager-confirm-password').required = false;
@@ -285,11 +414,23 @@
 
         async function loadManagerData(username) {
             try {
-                const manager = await apiGet(`/managers/${username}`);
-                document.getElementById('manager-name').value = manager.name || '';
-                document.getElementById('manager-username').value = manager.username || '';
+                const admin = await apiGet(`/admins/${username}`);
+                document.getElementById('manager-name').value = admin.name || '';
+                document.getElementById('manager-username').value = admin.username || '';
+                document.getElementById('manager-location').value = admin.location || '';
+                const regions = admin.regions || [];
+                
+                // Add any regions that aren't in availableRegions to the list
+                regions.forEach(region => {
+                    if (region && !availableRegions.includes(region)) {
+                        availableRegions.push(region);
+                    }
+                });
+                
+                selectedRegions = new Set(regions);
+                renderRegionBoxes();
             } catch (err) {
-                showStatus('Failed to load manager data: ' + err.message, 'error');
+                showStatus('Failed to load admin data: ' + err.message, 'error');
             }
         }
 
@@ -358,33 +499,45 @@
             }
 
             try {
+                const managerLocation = document.getElementById('manager-location').value.trim();
+                const regions = getSelectedRegions();
+                
+                if (!regions.length && !isEditMode) {
+                    showStatus('Please select at least one manager location', 'error');
+                    return;
+                }
+                
                 if (isEditMode) {
-                    showStatus('Updating manager...', 'info');
+                    showStatus('Updating admin...', 'info');
 
                     const updateData = {
-                        name: managerName
+                        name: managerName,
+                        location: managerLocation || null,
+                        regions: regions
                     };
 
                     if (managerPassword) {
                         updateData.password = managerPassword;
                     }
 
-                    await apiPut(`/managers/${editUsername}`, updateData);
-                    showStatus('Manager updated successfully!', 'success');
+                    await apiPut(`/admins/${editUsername}`, updateData);
+                    showStatus('Admin updated successfully!', 'success');
                 } else {
-                    showStatus('Creating manager...', 'info');
+                    showStatus('Creating admin...', 'info');
 
-                    await apiPost('/managers/', {
+                    await apiPost('/admins/', {
                         name: managerName,
                         username: managerUsername,
-                        password: managerPassword
+                        password: managerPassword,
+                        location: managerLocation || null,
+                        regions: regions
                     });
 
-                    showStatus('Manager added successfully!', 'success');
+                    showStatus('Admin added successfully!', 'success');
                 }
 
                 setTimeout(() => {
-                    window.location = 'super-admin.html';
+                    window.location = 'all-admins.html';
                 }, 2000);
 
             } catch (err) {

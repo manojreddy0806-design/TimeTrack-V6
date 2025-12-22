@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Card Report — TimeTrack</title>
+    <title>Card Report — Pramaan</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
         window.FontAwesomeConfig = {
@@ -63,11 +63,11 @@
                         <div class="bg-white rounded-xl p-2.5 flex items-center justify-center hover:scale-110 transition-transform duration-200 shadow-lg">
                             <i class="fa-solid fa-clock text-blue-600 text-xl"></i>
                         </div>
-                        <span class="text-2xl font-bold text-white">TimeTrack</span>
+                        <span class="text-2xl font-bold text-white">Pramaan</span>
                     </div>
                     <div class="flex items-center space-x-4">
-                        <nav class="hidden md:flex items-center space-x-3 bg-blue-700/20 px-3 py-2 rounded-xl backdrop-blur-sm">
-                            <a href="super-admin.html" data-nav-link class="relative z-10 flex items-center px-6 py-2.5 text-sm font-semibold text-blue-50 hover:text-white hover:bg-blue-400/50 rounded-lg transition-all duration-300 hover:scale-105 hover:shadow-lg transform">
+                        <nav class="hidden md:flex items-center space-x-3 bg-blue-700/20 px-3 py-2 rounded-xl backdrop-blur-sm" id="main-nav">
+                            <a href="#" data-nav-link data-dashboard-link class="relative z-10 flex items-center px-6 py-2.5 text-sm font-semibold text-blue-50 hover:text-white hover:bg-blue-400/50 rounded-lg transition-all duration-300 hover:scale-105 hover:shadow-lg transform">
                                 <i class="fa-solid fa-chart-pie mr-2"></i>
                                 Dashboard
                             </a>
@@ -75,7 +75,7 @@
                                 <i class="fa-solid fa-users mr-2"></i>
                                 All Managers
                             </a>
-                            <a href="super-admin.html#subscription" class="relative z-10 flex items-center px-6 py-2.5 text-sm font-semibold text-blue-50 hover:text-white hover:bg-blue-400/50 rounded-lg transition-all duration-300 hover:scale-105 hover:shadow-lg transform">
+                            <a href="#" data-subscription-link class="relative z-10 flex items-center px-6 py-2.5 text-sm font-semibold text-blue-50 hover:text-white hover:bg-blue-400/50 rounded-lg transition-all duration-300 hover:scale-105 hover:shadow-lg transform">
                                 <i class="fa-solid fa-credit-card mr-2"></i>
                                 Subscription
                             </a>
@@ -90,7 +90,35 @@
         </header>
 
         <main id="main-content" class="page-fade-in max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-24 pb-12">
-            <div id="card-report-section" class="bg-white rounded-2xl shadow-lg border border-card-border overflow-hidden">
+            <!-- Managers List View -->
+            <div id="managersView" class="bg-white rounded-2xl shadow-lg border border-card-border overflow-hidden">
+                <div class="px-8 py-5 border-b border-card-border flex justify-between items-center bg-slate-50/50">
+                    <div>
+                        <h2 class="text-2xl font-bold text-slate-800">Card Report</h2>
+                        <p class="text-sm text-slate-500">View card reports by manager</p>
+                    </div>
+                    <button id="backToManagersBtn" class="hidden px-4 py-2 text-sm font-semibold text-white bg-primary rounded-lg hover:bg-primary-hover transition shadow-sm" onclick="showManagersList()">
+                        <i class="fa-solid fa-arrow-left mr-2"></i>
+                        Back to Managers
+                    </button>
+                </div>
+                <div id="managersList" class="p-6">
+                    <div id="managersLoadingState" class="text-center py-12">
+                        <div class="inline-block animate-spin rounded-full h-12 w-12 border-4 border-blue-600 border-t-transparent mb-4"></div>
+                        <p class="text-slate-600">Loading managers...</p>
+                    </div>
+                    <div id="managersErrorState" class="hidden text-center py-12">
+                        <i class="fa-solid fa-triangle-exclamation text-red-500 text-4xl mb-4"></i>
+                        <p class="text-red-600 font-semibold" id="managersErrorMessage">Failed to load managers</p>
+                    </div>
+                    <div id="managersGrid" class="hidden grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        <!-- Manager cards will be inserted here -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Card Report Table View -->
+            <div id="card-report-section" class="hidden bg-white rounded-2xl shadow-lg border border-card-border overflow-hidden mt-6">
                 <div id="card-report-header" class="px-8 py-5 border-b border-card-border flex justify-between items-center bg-slate-50/50">
                     <div>
                         <h2 id="tenant-name" class="text-2xl font-bold text-slate-800">Card Report</h2>
@@ -154,6 +182,9 @@
         let currentWeekStart = null;
         let reportData = null;
         let stores = [];
+        let selectedManagerUsername = null;
+        let selectedManagerLocation = null;
+        let allManagers = [];
 
         // Initialize week to last 7 days (ending today)
         function initWeek() {
@@ -196,6 +227,157 @@
             }).format(amount);
         }
 
+        async function loadManagers() {
+            const loadingState = document.getElementById('managersLoadingState');
+            const errorState = document.getElementById('managersErrorState');
+            const managersGrid = document.getElementById('managersGrid');
+            const errorMessage = document.getElementById('managersErrorMessage');
+
+            loadingState.classList.remove('hidden');
+            errorState.classList.add('hidden');
+            managersGrid.classList.add('hidden');
+
+            try {
+                allManagers = await apiGet('/managers/');
+                
+                // Filter out super admin
+                allManagers = allManagers.filter(mgr => !mgr.is_super_admin);
+                
+                // Load store counts and calculate grand totals for each manager
+                const startDate = formatDate(currentWeekStart);
+                const endDate = formatDate(getWeekEnd());
+                
+                for (let mgr of allManagers) {
+                    try {
+                        // Get stores for this manager
+                        const managerStores = await apiGet(`/stores/?manager_username=${encodeURIComponent(mgr.username)}`);
+                        mgr.storeCount = managerStores ? managerStores.length : 0;
+                        
+                        // Only calculate grand total if manager has stores
+                        if (mgr.storeCount > 0) {
+                            // Get card report for this manager's stores
+                            const reportData = await apiGet(`/eod/card-report?start_date=${startDate}&end_date=${endDate}&manager_username=${encodeURIComponent(mgr.username)}`);
+                            
+                            // Calculate grand total
+                            let grandTotal = 0;
+                            if (reportData.data) {
+                                Object.values(reportData.data).forEach(dateData => {
+                                    Object.values(dateData).forEach(storeData => {
+                                        grandTotal += storeData.card_total || 0;
+                                    });
+                                });
+                            }
+                            mgr.grandTotal = grandTotal;
+                        } else {
+                            mgr.grandTotal = 0;
+                        }
+                    } catch (err) {
+                        console.error(`Failed to load data for manager ${mgr.username}:`, err);
+                        mgr.storeCount = 0;
+                        mgr.grandTotal = 0;
+                    }
+                }
+                
+                renderManagersList();
+                
+                loadingState.classList.add('hidden');
+                managersGrid.classList.remove('hidden');
+            } catch (error) {
+                console.error('Error loading managers:', error);
+                loadingState.classList.add('hidden');
+                errorState.classList.remove('hidden');
+                errorMessage.textContent = error.message || 'Failed to load managers';
+            }
+        }
+
+        function renderManagersList() {
+            const managersGrid = document.getElementById('managersGrid');
+            managersGrid.innerHTML = '';
+
+            if (!allManagers || allManagers.length === 0) {
+                managersGrid.innerHTML = '<div class="col-span-full text-center py-8 text-slate-500">No managers found</div>';
+                return;
+            }
+
+            allManagers.forEach(manager => {
+                const card = document.createElement('div');
+                card.className = 'bg-white border border-card-border rounded-xl p-6 hover:border-primary hover:shadow-md cursor-pointer transition-all duration-200';
+                card.onclick = () => showManagerReport(manager.username);
+                
+                card.innerHTML = `
+                    <div class="flex items-start justify-between mb-4">
+                        <div class="flex items-center space-x-3">
+                            <div class="w-12 h-12 rounded-full bg-blue-50 flex items-center justify-center">
+                                <i class="fa-solid fa-user-tie text-blue-600"></i>
+                            </div>
+                            <div>
+                                <h3 class="font-semibold text-slate-900">${escapeHtml(manager.location || 'No Region')}</h3>
+                                <p class="text-sm text-slate-600">${escapeHtml(manager.name || 'Manager')}</p>
+                                <p class="text-sm text-slate-500">${manager.storeCount || 0} store(s)</p>
+                            </div>
+                        </div>
+                        <div class="text-right">
+                            <span class="text-lg font-bold text-black">${formatCurrency(manager.grandTotal || 0)}</span>
+                        </div>
+                    </div>
+                    <div class="mt-4 pt-4 border-t border-card-border">
+                        <span class="text-sm text-primary font-medium">Click to view report →</span>
+                    </div>
+                `;
+                
+                managersGrid.appendChild(card);
+            });
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        async function showManagerReport(managerUsername) {
+            selectedManagerUsername = managerUsername;
+            
+            // Find the manager's location
+            const manager = allManagers.find(m => m.username === managerUsername);
+            selectedManagerLocation = manager ? (manager.location || 'No Region') : 'No Region';
+            
+            // Update the header title
+            const headerTitle = document.getElementById('tenant-name');
+            if (headerTitle) {
+                headerTitle.textContent = selectedManagerLocation;
+            }
+            
+            const managersView = document.getElementById('managersView');
+            const cardReportSection = document.getElementById('card-report-section');
+            const backBtn = document.getElementById('backToManagersBtn');
+            
+            managersView.classList.add('hidden');
+            cardReportSection.classList.remove('hidden');
+            backBtn.classList.remove('hidden');
+            
+            loadCardReport();
+        }
+
+        function showManagersList() {
+            selectedManagerUsername = null;
+            selectedManagerLocation = null;
+            
+            // Reset the header title
+            const headerTitle = document.getElementById('tenant-name');
+            if (headerTitle) {
+                headerTitle.textContent = 'Card Report';
+            }
+            
+            const managersView = document.getElementById('managersView');
+            const cardReportSection = document.getElementById('card-report-section');
+            const backBtn = document.getElementById('backToManagersBtn');
+            
+            managersView.classList.remove('hidden');
+            cardReportSection.classList.add('hidden');
+            backBtn.classList.add('hidden');
+        }
+
         async function loadCardReport() {
             const loadingState = document.getElementById('loadingState');
             const errorState = document.getElementById('errorState');
@@ -209,8 +391,13 @@
             try {
                 const startDate = formatDate(currentWeekStart);
                 const endDate = formatDate(getWeekEnd());
+                
+                let url = `/eod/card-report?start_date=${startDate}&end_date=${endDate}`;
+                if (selectedManagerUsername) {
+                    url += `&manager_username=${encodeURIComponent(selectedManagerUsername)}`;
+                }
 
-                const data = await apiGet(`/eod/card-report?start_date=${startDate}&end_date=${endDate}`);
+                const data = await apiGet(url);
                 
                 reportData = data.data;
                 stores = data.stores || [];
@@ -365,7 +552,11 @@
         document.getElementById('prevWeekBtn').addEventListener('click', () => {
             currentWeekStart.setDate(currentWeekStart.getDate() - 7);
             updateWeekRange();
-            loadCardReport();
+            if (selectedManagerUsername) {
+                loadCardReport();
+            } else {
+                loadManagers();
+            }
         });
 
         document.getElementById('nextWeekBtn').addEventListener('click', () => {
@@ -378,7 +569,11 @@
             if (newWeekEnd <= today) {
                 currentWeekStart.setDate(currentWeekStart.getDate() + 7);
                 updateWeekRange();
-                loadCardReport();
+                if (selectedManagerUsername) {
+                    loadCardReport();
+                } else {
+                    loadManagers();
+                }
             }
         });
 
@@ -398,11 +593,35 @@
         }
         
         // Initialize
+        // Update navigation based on role
+        function updateNavForRole() {
+            const session = loadSession();
+            if (session) {
+                const dashboardLink = document.querySelector('[data-dashboard-link]');
+                const subscriptionLink = document.querySelector('[data-subscription-link]');
+                
+                if (session.role === 'admin') {
+                    if (dashboardLink) dashboardLink.href = 'admin.html';
+                    if (subscriptionLink) subscriptionLink.style.display = 'none';
+                } else if (session.role === 'super-admin') {
+                    if (dashboardLink) dashboardLink.href = 'super-admin.html';
+                    if (subscriptionLink) {
+                        subscriptionLink.href = '#';
+                        subscriptionLink.onclick = function() { 
+                            window.location = 'super-admin.html#subscription'; 
+                            return false; 
+                        };
+                    }
+                }
+            }
+        }
+        
         document.addEventListener('DOMContentLoaded', () => {
+            updateNavForRole();
             initNavActiveState();
             initWeek();
             updateWeekRange();
-            loadCardReport();
+            loadManagers();
         });
     </script>
 </body>

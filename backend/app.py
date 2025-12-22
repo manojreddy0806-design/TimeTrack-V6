@@ -99,6 +99,7 @@ def create_app():
     from backend.routes.face import bp as face_bp
     from backend.routes.inventory_history import bp as inventory_history_bp
     from backend.routes.managers import bp as managers_bp
+    from backend.routes.admins import bp as admins_bp
     from backend.routes.tenants import bp as tenants_bp
     from backend.routes.billings import bp as billings_bp
 
@@ -158,6 +159,7 @@ def create_app():
     app.register_blueprint(stores_bp, url_prefix="/api/stores")
     app.register_blueprint(face_bp, url_prefix="/api/face")
     app.register_blueprint(managers_bp, url_prefix="/api/managers")
+    app.register_blueprint(admins_bp, url_prefix="/api/admins")
     app.register_blueprint(billings_bp, url_prefix="/api/billings")
     
     # Apply rate limiting to login endpoints
@@ -431,6 +433,20 @@ def create_app():
     def add_billing_month_command():
         """Add billing_month column to store_billings table"""
         from backend.migrations.add_billing_month_column import migrate
+        migrate()
+    
+    # CLI command to add location column to managers table
+    @app.cli.command("add-manager-location")
+    def add_manager_location_command():
+        """Add location column to managers table"""
+        from backend.migrations.add_manager_location import migrate
+        migrate()
+
+    # CLI command to add admin fields to managers table
+    @app.cli.command("add-admin-fields")
+    def add_admin_fields_command():
+        """Add is_admin and regions columns to managers table"""
+        from backend.migrations.add_admin_fields_to_managers import migrate
         migrate()
 
     return app
