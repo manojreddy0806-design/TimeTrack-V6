@@ -177,6 +177,8 @@ def create_app():
             print("=" * 80)
             print(f"UNHANDLED EXCEPTION: {error_type}: {error_msg}")
             print(f"Path: {request.path}")
+            print(f"Method: {request.method}")
+            print(f"Full URL: {request.url}")
             print("FULL TRACEBACK:")
             traceback.print_exc(file=sys.stdout)
             print("=" * 80)
@@ -203,6 +205,26 @@ def create_app():
         
         # For non-API routes, let Flask handle it
         raise
+    
+    # Add 404 handler to log missing routes
+    @app.errorhandler(404)
+    def handle_404(e):
+        """Handle 404 errors and log the requested URL"""
+        from flask import request
+        print("=" * 80)
+        print("404 NOT FOUND ERROR")
+        print(f"Requested URL: {request.url}")
+        print(f"Requested Path: {request.path}")
+        print(f"Request Method: {request.method}")
+        print(f"Referrer: {request.referrer}")
+        print("=" * 80)
+        
+        # For API routes, return JSON
+        if request.path.startswith('/api/'):
+            return jsonify({"error": f"Route not found: {request.path}"}), 404
+        
+        # For non-API routes, let Flask handle it (will show default 404 page)
+        return e
     
     # Register blueprints - order matters! More specific routes first
     app.register_blueprint(tenants_bp, url_prefix="/api/tenants")
