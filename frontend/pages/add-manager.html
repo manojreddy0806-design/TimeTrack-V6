@@ -306,6 +306,16 @@
                     </div>
 
                     <div class="group">
+                        <label for="manager-location"
+                            class="block text-sm font-bold text-slate-800 mb-2.5 group-focus-within:text-blue-600 transition-colors duration-200">
+                            Location/Region
+                        </label>
+                        <input type="text" id="manager-location" name="manager-location"
+                            placeholder="Enter manager location or region"
+                            class="animated-input block w-full px-5 py-3.5 text-base bg-slate-50 border-2 border-slate-300 rounded-xl focus:ring-4 focus:ring-blue-500/20 focus:border-blue-600 focus:bg-white focus:shadow-lg focus:-translate-y-0.5 focus:scale-[1.02] transition-all duration-300 ease-out placeholder:text-slate-400 hover:border-slate-400 hover:shadow-sm">
+                    </div>
+
+                    <div class="group">
                         <label for="manager-password"
                             class="block text-sm font-bold text-slate-800 mb-2.5 group-focus-within:text-blue-600 transition-colors duration-200">
                             Password <span class="text-red-500">*</span>
@@ -420,6 +430,7 @@
                 const manager = await apiGet(`/managers/${username}`);
                 document.getElementById('manager-name').value = manager.name || '';
                 document.getElementById('manager-username').value = manager.username || '';
+                document.getElementById('manager-location').value = manager.location || '';
             } catch (err) {
                 showStatus('Failed to load manager data: ' + err.message, 'error');
             }
@@ -452,6 +463,7 @@
 
             const managerName = document.getElementById('manager-name').value.trim();
             const managerUsername = document.getElementById('manager-username').value.trim();
+            const managerLocation = document.getElementById('manager-location').value.trim();
             const managerPassword = document.getElementById('manager-password').value;
             const managerConfirmPassword = document.getElementById('manager-confirm-password').value;
 
@@ -494,7 +506,8 @@
                     showStatus('Updating manager...', 'info');
 
                     const updateData = {
-                        name: managerName
+                        name: managerName,
+                        location: managerLocation || null
                     };
 
                     if (managerPassword) {
@@ -509,7 +522,8 @@
                     await apiPost('/managers/', {
                         name: managerName,
                         username: managerUsername,
-                        password: managerPassword
+                        password: managerPassword,
+                        location: managerLocation || null
                     });
 
                     showStatus('Manager added successfully!', 'success');
