@@ -1242,6 +1242,25 @@ document.addEventListener("DOMContentLoaded", async () => {
   if (["manager.html", "dashboard.html"].includes(path) && !session)
     window.location = "login.html";
 
+  // General: Hide "Back" button for managers (unless being viewed by super-admin/admin)
+  const urlParams = new URLSearchParams(window.location.search);
+  const viewAs = urlParams.get('view_as');
+  const backToSuperAdmin = qs("backToSuperAdmin");
+  const backToSuperAdminMobile = qs("backToSuperAdminMobile");
+  
+  if (session?.role === "manager" && !viewAs) {
+    // Regular manager login - hide back button
+    if (backToSuperAdmin) {
+      backToSuperAdmin.style.display = "none";
+      backToSuperAdmin.classList.add("hidden");
+      backToSuperAdmin.classList.remove("md:flex");
+    }
+    if (backToSuperAdminMobile) {
+      backToSuperAdminMobile.style.display = "none";
+      backToSuperAdminMobile.classList.add("hidden");
+    }
+  }
+
   // Dashboard page - Update welcome message with store name
   if (path === "dashboard.html" && session?.role === "store") {
     const dashboardWelcome = qs("dashboardWelcome");
@@ -1812,6 +1831,19 @@ document.addEventListener("DOMContentLoaded", async () => {
           backLink.innerHTML = '<i class="fa-solid fa-arrow-left mr-2"></i> Back to Super Admin';
         }
         backLink.style.display = "flex";
+        backLink.classList.remove("hidden");
+        backLink.classList.add("md:flex");
+      }
+      
+      // Show mobile back link
+      const backLinkMobile = qs("backToSuperAdminMobile");
+      if (backLinkMobile) {
+        if (session?.role === "admin") {
+          backLinkMobile.innerHTML = '<i class="fa-solid fa-arrow-left"></i> Back to Admin';
+        } else {
+          backLinkMobile.innerHTML = '<i class="fa-solid fa-arrow-left"></i> Back to Super Admin';
+        }
+        backLinkMobile.classList.remove("hidden");
       }
       
       // Hide add store button for super-admin/admin (they can't add stores for managers)
