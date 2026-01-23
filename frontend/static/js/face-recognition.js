@@ -203,9 +203,29 @@ async function clockInWithFace(faceDescriptor, faceImage, storeId) {
     };
   } catch (error) {
     console.error('Error clocking in:', error);
+    // Parse error response to get error_code and metadata
+    let errorData = { error: error.message };
+    try {
+      if (error.response && error.response.data) {
+        errorData = error.response.data;
+      } else if (typeof error.message === 'string') {
+        // Try to parse JSON error message
+        try {
+          const parsed = JSON.parse(error.message);
+          if (parsed.error) errorData = parsed;
+        } catch (e) {
+          // Not JSON, use message as-is
+        }
+      }
+    } catch (e) {
+      // Ignore parsing errors
+    }
+    
     return {
       success: false,
-      error: error.message
+      error: errorData.error || error.message,
+      error_code: errorData.error_code,
+      metadata: errorData.metadata
     };
   }
 }
@@ -225,9 +245,29 @@ async function clockOutWithFace(faceDescriptor, faceImage, storeId) {
     };
   } catch (error) {
     console.error('Error clocking out:', error);
+    // Parse error response to get error_code and metadata
+    let errorData = { error: error.message };
+    try {
+      if (error.response && error.response.data) {
+        errorData = error.response.data;
+      } else if (typeof error.message === 'string') {
+        // Try to parse JSON error message
+        try {
+          const parsed = JSON.parse(error.message);
+          if (parsed.error) errorData = parsed;
+        } catch (e) {
+          // Not JSON, use message as-is
+        }
+      }
+    } catch (e) {
+      // Ignore parsing errors
+    }
+    
     return {
       success: false,
-      error: error.message
+      error: errorData.error || error.message,
+      error_code: errorData.error_code,
+      metadata: errorData.metadata
     };
   }
 }

@@ -123,5 +123,10 @@ class Config:
         # File uploads should use cloud storage instead
         pass
     
+    # Application Timezone Configuration
+    # All business logic and user-facing times use this timezone
+    # Database timestamps are stored in UTC and converted at application boundary
+    APP_TIMEZONE = os.getenv("APP_TIMEZONE", "America/New_York")  # Eastern Time (US), handles DST automatically
+    
     # Note: Legacy YubiKey environment variables are ignored
     

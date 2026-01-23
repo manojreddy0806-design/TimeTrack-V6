@@ -6,6 +6,8 @@ import bcrypt
 import json
 
 from backend.database import db
+# Note: Model defaults use datetime.utcnow for database storage (UTC naive)
+# Application code should use timezone_utils for ET-aware timestamps
 
 # ================== SQLAlchemy Models ==================
 
@@ -122,6 +124,9 @@ class Store(db.Model):
     manager_username = db.Column(db.String(50), nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     allowed_ip = db.Column(db.String(45), nullable=True)
+    opening_time = db.Column(db.String(5), nullable=True)  # Format: "HH:MM" (24-hour format, 00:00-23:59)
+    closing_time = db.Column(db.String(5), nullable=True)  # Format: "HH:MM" (24-hour format, 00:00-23:59)
+    timezone = db.Column(db.String(100), nullable=True)  # Timezone string (e.g., 'America/New_York'), defaults to UTC
     
     # Foreign key relationship to Manager (composite: tenant_id + username)
     # Note: We'll handle this in application logic since SQLAlchemy doesn't support composite FKs directly
@@ -143,19 +148,54 @@ class Store(db.Model):
     )
     
     def to_dict(self, include_password=False):
-        data = {
-            'id': self.id,
-            'tenant_id': self.tenant_id,
-            'name': self.name,
-            'username': self.username,
-            'total_boxes': self.total_boxes,
-            'manager_username': self.manager_username,
-            'allowed_ip': self.allowed_ip,
-            'created_at': self.created_at.isoformat() if self.created_at else None
-        }
-        if include_password:
-            data['password'] = self.password
-        return data
+        try:
+            # Safely serialize created_at
+            created_at_str = None
+            if self.created_at:
+                try:
+                    created_at_str = self.created_at.isoformat()
+                except (AttributeError, ValueError) as e:
+                    # If isoformat fails, try str() or set to None
+                    try:
+                        created_at_str = str(self.created_at)
+                    except:
+                        created_at_str = None
+            
+            data = {
+                'id': str(self.id) if self.id else None,
+                'tenant_id': self.tenant_id,
+                'name': self.name,
+                'username': self.username,
+                'total_boxes': self.total_boxes,
+                'manager_username': self.manager_username,
+                'allowed_ip': self.allowed_ip,
+                'opening_time': self.opening_time,
+                'closing_time': self.closing_time,
+                'timezone': self.timezone,
+                'created_at': created_at_str
+            }
+            if include_password:
+                data['password'] = self.password
+            return data
+        except Exception as e:
+            # Log error and return minimal data
+            import traceback
+            print(f"Error in Store.to_dict() for store {getattr(self, 'id', 'unknown')}: {e}")
+            print(traceback.format_exc())
+            # Return minimal dict with safe values
+            return {
+                'id': str(self.id) if hasattr(self, 'id') and self.id else None,
+                'tenant_id': getattr(self, 'tenant_id', None),
+                'name': getattr(self, 'name', 'Unknown'),
+                'username': getattr(self, 'username', None),
+                'total_boxes': getattr(self, 'total_boxes', 0),
+                'manager_username': getattr(self, 'manager_username', None),
+                'allowed_ip': getattr(self, 'allowed_ip', None),
+                'opening_time': getattr(self, 'opening_time', None),
+                'closing_time': getattr(self, 'closing_time', None),
+                'timezone': getattr(self, 'timezone', None),
+                'created_at': None
+            }
 
 
 class Employee(db.Model):
@@ -316,6 +356,7 @@ class TimeClock(db.Model):
     clock_out_face_image = db.Column(db.Text, nullable=True)  # Base64 image
     clock_in_confidence = db.Column(db.Float, nullable=True)
     clock_out_confidence = db.Column(db.Float, nullable=True)
+    clock_out_type = db.Column(db.String(20), nullable=True)  # 'MANUAL', 'AUTO' - how clock-out occurred
     
     # Relationships
     tenant = db.relationship('Tenant')
@@ -341,7 +382,43 @@ class TimeClock(db.Model):
             'hours_worked': self.hours_worked,
             'clock_in_confidence': self.clock_in_confidence,
             'clock_out_confidence': self.clock_out_confidence,
+            'clock_out_type': self.clock_out_type,
             'status': 'clocked_out' if self.clock_out else 'clocked_in'
+        }
+
+
+class Alert(db.Model):
+    __tablename__ = 'alerts'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey('tenants.id'), nullable=False, index=True)
+    store_id = db.Column(db.String(100), nullable=True, index=True)
+    manager_username = db.Column(db.String(50), nullable=True, index=True)
+    alert_type = db.Column(db.String(50), nullable=False)  # 'late_clock_in', 'auto_clockout', etc.
+    title = db.Column(db.String(200), nullable=False)
+    message = db.Column(db.Text, nullable=False)
+    employee_id = db.Column(db.Integer, db.ForeignKey('employees.id'), nullable=True)
+    employee_name = db.Column(db.String(100), nullable=True)
+    is_read = db.Column(db.Boolean, default=False, index=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, index=True)
+    
+    # Relationships
+    tenant = db.relationship('Tenant')
+    employee = db.relationship('Employee')
+    
+    def to_dict(self):
+        return {
+            'id': str(self.id),
+            'tenant_id': self.tenant_id,
+            'store_id': self.store_id,
+            'manager_username': self.manager_username,
+            'alert_type': self.alert_type,
+            'title': self.title,
+            'message': self.message,
+            'employee_id': str(self.employee_id) if self.employee_id else None,
+            'employee_name': self.employee_name,
+            'is_read': self.is_read,
+            'created_at': self.created_at.isoformat() if self.created_at else None
         }
 
 
@@ -360,6 +437,7 @@ class EOD(db.Model):
     boxes_count = db.Column(db.Integer, default=0)
     accessories_amount = db.Column(db.Float, default=0)
     magenta_amount = db.Column(db.Float, default=0)
+    inventory_sold = db.Column(db.Integer, default=0)
     over_short = db.Column(db.Float, default=0)
     total1 = db.Column(db.Float, default=0)
     # Denominations
@@ -402,6 +480,7 @@ class EOD(db.Model):
             'boxes_count': self.boxes_count,
             'accessories_amount': self.accessories_amount,
             'magenta_amount': self.magenta_amount,
+            'inventory_sold': self.inventory_sold,
             'over_short': self.over_short,
             'total1': self.total1,
             'denom_100_count': self.denom_100_count,
@@ -748,7 +827,7 @@ def update_manager(tenant_id, username, name=None, new_username=None, password=N
 
 # ================== Store Functions ==================
 
-def create_store(tenant_id, name, username=None, password=None, total_boxes=0, manager_username=None, allowed_ip=None):
+def create_store(tenant_id, name, username=None, password=None, total_boxes=0, manager_username=None, allowed_ip=None, opening_time=None, closing_time=None, timezone=None):
     """Create a new store"""
     # Skip duplicate checking - just try to create and let database handle it
     # This is much faster - database constraints will handle uniqueness
@@ -769,7 +848,10 @@ def create_store(tenant_id, name, username=None, password=None, total_boxes=0, m
         password=password_hash,
         total_boxes=total_boxes,
         manager_username=manager_username,
-        allowed_ip=allowed_ip
+        allowed_ip=allowed_ip,
+        opening_time=opening_time,
+        closing_time=closing_time,
+        timezone=timezone
     )
     db.session.add(store)
     
@@ -805,16 +887,54 @@ def get_store_by_name(name, tenant_id=None):
 
 def get_stores(tenant_id=None, manager_username=None):
     """Get stores, optionally filtered by tenant_id and/or manager_username"""
-    query = Store.query
-    if tenant_id:
-        query = query.filter_by(tenant_id=tenant_id)
-    if manager_username:
-        query = query.filter_by(manager_username=manager_username)
-    stores = query.all()
-    return [s.to_dict() for s in stores]
+    try:
+        query = Store.query
+        if tenant_id:
+            query = query.filter_by(tenant_id=tenant_id)
+        if manager_username:
+            query = query.filter_by(manager_username=manager_username)
+        stores = query.all()
+        
+        # Convert stores to dicts with error handling
+        result = []
+        for store in stores:
+            try:
+                result.append(store.to_dict())
+            except Exception as e:
+                # Log error for this specific store but continue with others
+                import traceback
+                print(f"Error converting store {store.id} to dict: {e}")
+                print(traceback.format_exc())
+                # Try to create a minimal dict with available data
+                try:
+                    result.append({
+                        'id': str(store.id),
+                        'tenant_id': store.tenant_id,
+                        'name': store.name,
+                        'username': store.username,
+                        'total_boxes': store.total_boxes,
+                        'manager_username': store.manager_username,
+                        'allowed_ip': store.allowed_ip,
+                        'opening_time': store.opening_time,
+                        'closing_time': store.closing_time,
+                        'timezone': store.timezone,
+                        'created_at': None  # Fallback if serialization fails
+                    })
+                except Exception as fallback_error:
+                    print(f"Error in fallback dict creation: {fallback_error}")
+                    # Skip this store if even fallback fails
+                    continue
+        
+        return result
+    except Exception as e:
+        # Log the full error
+        import traceback
+        print(f"Error in get_stores: {e}")
+        print(traceback.format_exc())
+        raise
 
 
-def update_store(tenant_id, name, new_name=None, username=None, password=None, total_boxes=None, allowed_ip=None):
+def update_store(tenant_id, name, new_name=None, username=None, password=None, total_boxes=None, allowed_ip=None, opening_time=None, closing_time=None, timezone=None):
     """Update a store's information"""
     store = Store.query.filter_by(tenant_id=tenant_id, name=name).first()
     if not store:
@@ -901,6 +1021,12 @@ def update_store(tenant_id, name, new_name=None, username=None, password=None, t
         store.total_boxes = total_boxes
     if allowed_ip is not None:
         store.allowed_ip = allowed_ip
+    if opening_time is not None:
+        store.opening_time = opening_time
+    if closing_time is not None:
+        store.closing_time = closing_time
+    if timezone is not None:
+        store.timezone = timezone
     
     # Commit all changes together in a single transaction
     db.session.commit()
@@ -943,12 +1069,22 @@ def delete_store(tenant_id, name):
 
 def create_employee(tenant_id, store_id, name, role=None, phone_number=None, hourly_pay=None):
     """Create a new employee"""
+    # Check for duplicate phone number if phone_number is provided
+    if phone_number and phone_number.strip():
+        phone_number_clean = phone_number.strip()
+        existing_employee = Employee.query.filter_by(
+            tenant_id=tenant_id,
+            phone_number=phone_number_clean
+        ).first()
+        if existing_employee:
+            raise ValueError(f"An employee with phone number {phone_number_clean} already exists.")
+    
     employee = Employee(
         tenant_id=tenant_id,
         store_id=store_id,
         name=name,
         role=role,
-        phone_number=phone_number,
+        phone_number=phone_number.strip() if phone_number else None,
         hourly_pay=hourly_pay,
         active=True
     )
@@ -1182,7 +1318,50 @@ def add_default_inventory_to_store(tenant_id, store_name):
 
 # ================== EOD Functions ==================
 
-def create_eod(tenant_id, store_id, report_date, notes=None, cash_amount=0, credit_amount=0, card1_amount=0, qpay_amount=0, boxes_count=0, accessories_amount=0, magenta_amount=0, over_short=0, total1=0, 
+def create_alert(tenant_id, store_id, manager_username, alert_type, title, message, employee_id=None, employee_name=None):
+    """Create a new alert for a manager"""
+    alert = Alert(
+        tenant_id=tenant_id,
+        store_id=store_id,
+        manager_username=manager_username,
+        alert_type=alert_type,
+        title=title,
+        message=message,
+        employee_id=employee_id,
+        employee_name=employee_name,
+        is_read=False
+    )
+    db.session.add(alert)
+    db.session.commit()
+    return alert.to_dict()
+
+
+def get_alerts(tenant_id, manager_username=None, store_id=None, is_read=None, limit=100):
+    """Get alerts for a manager, optionally filtered by store and read status"""
+    query = Alert.query.filter_by(tenant_id=tenant_id)
+    
+    if manager_username:
+        query = query.filter_by(manager_username=manager_username)
+    if store_id:
+        query = query.filter_by(store_id=store_id)
+    if is_read is not None:
+        query = query.filter_by(is_read=is_read)
+    
+    alerts = query.order_by(Alert.created_at.desc()).limit(limit).all()
+    return [alert.to_dict() for alert in alerts]
+
+
+def mark_alert_read(alert_id, tenant_id):
+    """Mark an alert as read"""
+    alert = Alert.query.filter_by(id=alert_id, tenant_id=tenant_id).first()
+    if alert:
+        alert.is_read = True
+        db.session.commit()
+        return True
+    return False
+
+
+def create_eod(tenant_id, store_id, report_date, notes=None, cash_amount=0, credit_amount=0, card1_amount=0, qpay_amount=0, boxes_count=0, accessories_amount=0, magenta_amount=0, inventory_sold=0, over_short=0, total1=0, 
                denom_100_count=0, denom_100_total=0, denom_50_count=0, denom_50_total=0, denom_20_count=0, denom_20_total=0, 
                denom_10_count=0, denom_10_total=0, denom_5_count=0, denom_5_total=0, denom_1_count=0, denom_1_total=0, total_bills=0, submitted_by=None):
     """Create an EOD report"""
@@ -1198,6 +1377,7 @@ def create_eod(tenant_id, store_id, report_date, notes=None, cash_amount=0, cred
         boxes_count=boxes_count,
         accessories_amount=accessories_amount,
         magenta_amount=magenta_amount,
+        inventory_sold=inventory_sold,
         over_short=over_short,
         total1=total1,
         denom_100_count=denom_100_count,
@@ -1271,7 +1451,9 @@ def get_eods(tenant_id=None, store_id=None):
 
 def get_current_billing_month():
     """Get current billing month in YYYY-MM format"""
-    return datetime.utcnow().strftime('%Y-%m')
+    # Get current month in ET, format as YYYY-MM
+    from backend.utils.timezone_utils import now_et
+    return now_et().strftime('%Y-%m')
 
 
 def get_store_billings(tenant_id=None, store_id=None, billing_month=None):
@@ -1336,11 +1518,14 @@ def update_billing_payment(tenant_id, store_id, bill_type, amount, billing_month
         billing_month=billing_month
     ).first()
     
+    # Store payment date as UTC naive (from ET)
+    from backend.utils.timezone_utils import now_et, et_to_utc_naive
+    
     if billing:
         # Update existing billing
         billing.amount = float(amount)
         billing.paid = True
-        billing.payment_date = datetime.utcnow()
+        billing.payment_date = et_to_utc_naive(now_et())
     else:
         # Create new billing for current month
         billing = StoreBilling(
@@ -1350,7 +1535,7 @@ def update_billing_payment(tenant_id, store_id, bill_type, amount, billing_month
             billing_month=billing_month,
             amount=float(amount),
             paid=True,
-            payment_date=datetime.utcnow()
+            payment_date=et_to_utc_naive(now_et())
         )
         db.session.add(billing)
     

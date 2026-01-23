@@ -381,10 +381,18 @@
                 // Fetch store counts for each manager
                 for (let mgr of allManagers) {
                     try {
-                        const stores = await apiGet(`/stores/?manager_username=${encodeURIComponent(mgr.username)}`);
+                        // Use StoreService if available, otherwise fall back to apiGet
+                        let stores = [];
+                        if (typeof storeService !== 'undefined') {
+                            stores = await storeService.listStores(mgr.username);
+                        } else {
+                            stores = await apiGet(`/stores/?manager_username=${encodeURIComponent(mgr.username)}`);
+                        }
                         mgr.storeCount = stores ? stores.length : 0;
                     } catch (err) {
                         console.error(`Failed to load stores for manager ${mgr.username}:`, err);
+                        const errorMsg = err.error || err.message || 'Unknown error';
+                        console.error(`Error details: ${errorMsg} [Request ID: ${err.request_id || 'N/A'}]`);
                         mgr.storeCount = 0;
                     }
                 }

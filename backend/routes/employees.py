@@ -13,6 +13,33 @@ def list_employees():
     employees = get_employees(tenant_id=tenant_id, store_id=store_id)
     return jsonify(employees)
 
+
+@bp.get("/active-count")
+@require_auth()
+def get_active_count():
+    """Get count of employees currently clocked in (active)"""
+    from datetime import datetime
+    from ..models import TimeClock
+    from backend.utils.timezone_utils import today_start_utc_naive
+    
+    tenant_id = g.tenant_id
+    today_start = today_start_utc_naive()
+    
+    # Get all employees clocked in today who haven't clocked out
+    active_entries = TimeClock.query.filter(
+        TimeClock.tenant_id == tenant_id,
+        TimeClock.clock_in >= today_start,
+        TimeClock.clock_out == None
+    ).all()
+    
+    # Get unique employee IDs
+    active_employee_ids = set(entry.employee_id for entry in active_entries)
+    
+    return jsonify({
+        "active_count": len(active_employee_ids),
+        "active_employee_ids": list(active_employee_ids)
+    }), 200
+
 @bp.post("/")
 @require_auth()
 def add_employee():
@@ -26,15 +53,30 @@ def add_employee():
             return jsonify({"error": "Employee name is required"}), 400
         
         tenant_id = g.tenant_id
+        phone_number = data.get("phone_number")
+        
+        # Check for duplicate phone number if provided
+        if phone_number and phone_number.strip():
+            from ..models import Employee
+            existing_employee = Employee.query.filter_by(
+                tenant_id=tenant_id,
+                phone_number=phone_number.strip()
+            ).first()
+            if existing_employee:
+                return jsonify({"error": f"An employee with phone number {phone_number.strip()} already exists."}), 400
+        
         emp_id = create_employee(
             tenant_id=tenant_id,
             store_id=data.get("store_id"),
             name=name.strip(),
             role=data.get("role"),
-            phone_number=data.get("phone_number"),
+            phone_number=phone_number,
             hourly_pay=data.get("hourly_pay")
         )
         return jsonify({"id": emp_id}), 201
+    except ValueError as e:
+        # Handle duplicate phone number error from create_employee
+        return jsonify({"error": str(e)}), 400
     except Exception as e:
         import traceback
         traceback.print_exc()
@@ -58,6 +100,16 @@ def edit_employee(employee_id):
         
         phone_number = data.get("phone_number")
         hourly_pay = data.get("hourly_pay")
+        
+        # Check for duplicate phone number if phone_number is being updated and is different
+        if phone_number and phone_number.strip():
+            from ..models import Employee
+            existing_employee = Employee.query.filter_by(
+                tenant_id=tenant_id,
+                phone_number=phone_number.strip()
+            ).first()
+            if existing_employee and str(existing_employee.id) != str(employee_id):
+                return jsonify({"error": f"An employee with phone number {phone_number.strip()} already exists."}), 400
         
         # Validate hourly_pay if provided
         if hourly_pay is not None:

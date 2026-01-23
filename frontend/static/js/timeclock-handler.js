@@ -114,11 +114,134 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   }
   
+  // Store hours information
+  let storeHours = null;
+  let clockWindowStart = null;
+  let clockWindowEnd = null;
+  
+  // Fetch store hours and update UI
+  async function fetchStoreHours() {
+    try {
+      // Get store information (includes opening_time, closing_time, timezone)
+      const stores = await apiGet("/stores/");
+      const currentStore = stores.find(s => s.name === storeId);
+      
+      if (currentStore && currentStore.opening_time && currentStore.closing_time) {
+        storeHours = {
+          opening_time: currentStore.opening_time,
+          closing_time: currentStore.closing_time,
+          timezone: currentStore.timezone || 'UTC'
+        };
+        
+        // Calculate clock window (30 min before opening to 30 min after closing)
+        const [openHour, openMin] = currentStore.opening_time.split(':').map(Number);
+        const [closeHour, closeMin] = currentStore.closing_time.split(':').map(Number);
+        
+        const now = new Date();
+        const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        
+        // Clock window start: 30 minutes before opening
+        clockWindowStart = new Date(today);
+        clockWindowStart.setHours(openHour, openMin - 30, 0, 0);
+        
+        // Clock window end: 30 minutes after closing
+        clockWindowEnd = new Date(today);
+        clockWindowEnd.setHours(closeHour, closeMin + 30, 0, 0);
+        
+        // Handle overnight stores (if close < open, close is next day)
+        if (closeHour < openHour || (closeHour === openHour && closeMin < openMin)) {
+          clockWindowEnd.setDate(clockWindowEnd.getDate() + 1);
+        }
+        
+        updateClockButtonsState();
+      } else {
+        // No store hours configured - allow all actions
+        storeHours = null;
+        clockWindowStart = null;
+        clockWindowEnd = null;
+        updateClockButtonsState();
+      }
+    } catch (error) {
+      console.error('Error fetching store hours:', error);
+      // On error, allow actions (backward compatibility)
+      storeHours = null;
+      updateClockButtonsState();
+    }
+  }
+  
+  // Update clock button states based on store hours
+  function updateClockButtonsState() {
+    if (!storeHours || !clockWindowStart || !clockWindowEnd) {
+      // No restrictions - enable buttons
+      if (clockInBtn) {
+        clockInBtn.disabled = false;
+        clockInBtn.style.opacity = '1';
+        clockInBtn.style.cursor = 'pointer';
+      }
+      if (clockOutBtn) {
+        clockOutBtn.disabled = false;
+        clockOutBtn.style.opacity = '1';
+        clockOutBtn.style.cursor = 'pointer';
+      }
+      return;
+    }
+    
+    const now = new Date();
+    const isWithinWindow = now >= clockWindowStart && now <= clockWindowEnd;
+    
+    // Format times for display
+    const formatTime = (date) => {
+      return date.toLocaleTimeString('en-US', {
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false
+      });
+    };
+    
+    if (isWithinWindow) {
+      // Within window - enable buttons
+      if (clockInBtn) {
+        clockInBtn.disabled = false;
+        clockInBtn.style.opacity = '1';
+        clockInBtn.style.cursor = 'pointer';
+      }
+      if (clockOutBtn) {
+        clockOutBtn.disabled = false;
+        clockOutBtn.style.opacity = '1';
+        clockOutBtn.style.cursor = 'pointer';
+      }
+      updateStatus(`Clock in/out allowed: ${formatTime(clockWindowStart)} - ${formatTime(clockWindowEnd)}`, '#28a745');
+    } else {
+      // Outside window - disable buttons
+      if (clockInBtn) {
+        clockInBtn.disabled = true;
+        clockInBtn.style.opacity = '0.5';
+        clockInBtn.style.cursor = 'not-allowed';
+      }
+      if (clockOutBtn) {
+        clockOutBtn.disabled = true;
+        clockOutBtn.style.opacity = '0.5';
+        clockOutBtn.style.cursor = 'not-allowed';
+      }
+      
+      if (now < clockWindowStart) {
+        updateStatus(`Clock in/out allowed from ${formatTime(clockWindowStart)} to ${formatTime(clockWindowEnd)} (store time)`, '#dc3545');
+      } else {
+        updateStatus(`Clock in/out allowed from ${formatTime(clockWindowStart)} to ${formatTime(clockWindowEnd)} (store time)`, '#dc3545');
+      }
+    }
+  }
+  
   // Fetch status on page load
   fetchCurrentClockStatus();
+  fetchStoreHours();
   
   // Refresh status every 30 seconds
   setInterval(fetchCurrentClockStatus, 30000);
+  // Update clock button states every minute
+  setInterval(() => {
+    updateClockButtonsState();
+  }, 60000);
   
   // Show loading
   function showLoading(show = true) {
@@ -497,6 +620,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     
     if (result && result.success) {
       const data = result.data;
+      
+      // Handle auto-clockout case
+      if (data.auto_clockout) {
+        showInfo(`Auto clocked out: ${data.message || 'You were automatically clocked out at the store closing time.'}`);
+      }
       const actionText = currentAction === 'clock-in' ? 'Clocked In' : 'Clocked Out';
       const time = new Date(currentAction === 'clock-in' ? data.clock_in_time : data.clock_out_time);
       const timeStr = time.toLocaleTimeString('en-US', {
@@ -524,9 +652,36 @@ document.addEventListener('DOMContentLoaded', async () => {
       // Refresh clock status after successful clock in/out
       setTimeout(fetchCurrentClockStatus, 1000);
     } else {
-      const errorMsg = result ? result.error : 'Unknown error occurred';
+      // Error occurred - display backend error message
+      const errorMsg = result?.error || 'Failed to process clock action';
+      const errorCode = result?.error_code || 'UNKNOWN_ERROR';
+      
+      // Show detailed error message
+      let displayMsg = errorMsg;
+      if (result?.metadata) {
+        // Include metadata if available (time windows, etc.)
+        const meta = result.metadata;
+        if (meta.window_start && meta.window_end) {
+          const startTime = new Date(meta.window_start).toLocaleTimeString('en-US', {
+            hour: '2-digit',
+            minute: '2-digit',
+            hour12: false
+          });
+          const endTime = new Date(meta.window_end).toLocaleTimeString('en-US', {
+            hour: '2-digit',
+            minute: '2-digit',
+            hour12: false
+          });
+          displayMsg += `\n\nAllowed window: ${startTime} - ${endTime} (store time)`;
+        }
+      }
+      
       updateStatus(`❌ Failed: ${errorMsg}`, '#dc3545');
-      showError('Failed to ' + (currentAction === 'clock-in' ? 'clock in' : 'clock out') + ':\n\n' + errorMsg);
+      showError('Failed to ' + (currentAction === 'clock-in' ? 'clock in' : 'clock out') + ':\n\n' + displayMsg, 
+                errorCode === 'OUTSIDE_CLOCK_WINDOW' || errorCode === 'STORE_CLOSED_LOGIN' ? 'Store Hours Restriction' : 'Error');
+      
+      // Refresh store hours to update button states
+      fetchStoreHours();
     }
   }
   

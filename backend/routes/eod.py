@@ -52,6 +52,7 @@ def add_eod():
             boxes_count = safe_int(data.get("boxes_count", 0))
             accessories_amount = safe_float(data.get("accessories_amount", 0))
             magenta_amount = safe_float(data.get("magenta_amount", 0))
+            inventory_sold = safe_int(data.get("inventory_sold", 0))
             over_short = safe_float(data.get("over_short", 0))  # Can be negative
             total1 = safe_float(data.get("total1", 0))
             
@@ -71,7 +72,7 @@ def add_eod():
             total_bills = safe_float(data.get("total_bills", 0))
             
             # Validate non-negative values (except over_short which can be negative)
-            if cash_amount < 0 or credit_amount < 0 or card1_amount < 0 or qpay_amount < 0 or boxes_count < 0 or accessories_amount < 0 or magenta_amount < 0 or total1 < 0:
+            if cash_amount < 0 or credit_amount < 0 or card1_amount < 0 or qpay_amount < 0 or boxes_count < 0 or accessories_amount < 0 or magenta_amount < 0 or inventory_sold < 0 or total1 < 0:
                 return jsonify({"error": "All amounts and counts must be non-negative (except Over/Short)"}), 400
         except (ValueError, TypeError) as e:
             return jsonify({"error": f"Invalid numeric value: {str(e)}"}), 400
@@ -79,7 +80,7 @@ def add_eod():
         # Debug logging
         print(f"EOD Submission received: cash={cash_amount}, credit={credit_amount}, card1={card1_amount}, "
               f"qpay={qpay_amount}, boxes={boxes_count}, accessories={accessories_amount}, "
-              f"magenta={magenta_amount}, over_short={over_short}, total1={total1}")
+              f"magenta={magenta_amount}, inventory_sold={inventory_sold}, over_short={over_short}, total1={total1}")
         
         tenant_id = g.tenant_id
         eod_id = create_eod(
@@ -94,6 +95,7 @@ def add_eod():
             boxes_count=boxes_count,
             accessories_amount=accessories_amount,
             magenta_amount=magenta_amount,
+            inventory_sold=inventory_sold,
             over_short=over_short,
             total1=total1,
             denom_100_count=denom_100_count,
@@ -139,12 +141,16 @@ def get_cash_report():
         if start_date_param:
             start_date = datetime.strptime(start_date_param, "%Y-%m-%d").date()
         else:
-            start_date = (datetime.now() - timedelta(days=6)).date()  # 7 days including today
+            # Use ET time for date calculations
+            from backend.utils.timezone_utils import now_et
+            start_date = (now_et() - timedelta(days=6)).date()  # 7 days including today
         
         if end_date_param:
             end_date = datetime.strptime(end_date_param, "%Y-%m-%d").date()
         else:
-            end_date = datetime.now().date()
+            # Use ET time for date calculations
+            from backend.utils.timezone_utils import now_et
+            end_date = now_et().date()
         
         # Get stores for this tenant, optionally filtered by manager or admin regions
         user_role = g.current_user.get('role')
@@ -278,12 +284,16 @@ def get_card_report():
         if start_date_param:
             start_date = datetime.strptime(start_date_param, "%Y-%m-%d").date()
         else:
-            start_date = (datetime.now() - timedelta(days=6)).date()  # 7 days including today
+            # Use ET time for date calculations
+            from backend.utils.timezone_utils import now_et
+            start_date = (now_et() - timedelta(days=6)).date()  # 7 days including today
         
         if end_date_param:
             end_date = datetime.strptime(end_date_param, "%Y-%m-%d").date()
         else:
-            end_date = datetime.now().date()
+            # Use ET time for date calculations
+            from backend.utils.timezone_utils import now_et
+            end_date = now_et().date()
         
         # Get stores for this tenant, optionally filtered by manager or admin regions
         user_role = g.current_user.get('role')

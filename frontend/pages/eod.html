@@ -139,22 +139,6 @@
                         </div>
                         <h2 class="text-2xl font-bold text-slate-900">End of Day Submission</h2>
                     </div>
-
-                    <!-- Top-right Date & Employee display (static for now) -->
-                    <div class="text-right text-sm font-semibold text-slate-700 space-y-1">
-                        <div>
-                            Date:
-                            <span id="eodDateDisplay" class="font-normal text-slate-800">
-                                11/18/2025
-                            </span>
-                        </div>
-                        <div>
-                            Employee:
-                            <span id="employeeNameDisplay" class="font-normal text-slate-800">
-                                John Doe
-                            </span>
-                        </div>
-                    </div>
                 </div>
 
                 <!-- FORM LAYOUT -->
@@ -173,7 +157,7 @@
                                     name="cash"
                                     inputmode="decimal"
                                     class="eod-input animated-input flex-1"
-                                    oninput="this.value = this.value.replace(/[^0-9.]/g, ''); this.value = this.value.replace(/(\..*)\./g, '$1');"
+                                    oninput="this.value = this.value.replace(/[^0-9.]/g, ''); this.value = this.value.replace(/(\..*)\./g, '$1'); calculateOverShort();"
                                 />
                             </div>
 
@@ -188,7 +172,7 @@
                                     name="card"
                                     inputmode="decimal"
                                     class="eod-input animated-input flex-1"
-                                    oninput="this.value = this.value.replace(/[^0-9.]/g, ''); this.value = this.value.replace(/(\..*)\./g, '$1');"
+                                    oninput="this.value = this.value.replace(/[^0-9.]/g, ''); this.value = this.value.replace(/(\..*)\./g, '$1'); calculateOverShort();"
                                 />
                             </div>
 
@@ -203,14 +187,14 @@
                                     name="card1"
                                     inputmode="decimal"
                                     class="eod-input animated-input flex-1"
-                                    oninput="this.value = this.value.replace(/[^0-9.]/g, ''); this.value = this.value.replace(/(\..*)\./g, '$1');"
+                                    oninput="this.value = this.value.replace(/[^0-9.]/g, ''); this.value = this.value.replace(/(\..*)\./g, '$1'); calculateOverShort();"
                                 />
                             </div>
 
-                            <!-- 4. Total -->
+                            <!-- 4. Ex-Total -->
                             <div class="flex items-center gap-3">
                                 <label class="w-28 text-sm font-semibold text-slate-700 flex-shrink-0">
-                                    4. Total
+                                    4. Ex-Total
                                 </label>
                                 <input
                                     type="text"
@@ -218,7 +202,7 @@
                                     name="total"
                                     inputmode="decimal"
                                     class="eod-input animated-input flex-1"
-                                    oninput="this.value = this.value.replace(/[^0-9.]/g, ''); this.value = this.value.replace(/(\..*)\./g, '$1');"
+                                    oninput="this.value = this.value.replace(/[^0-9.]/g, ''); this.value = this.value.replace(/(\..*)\./g, '$1'); calculateOverShort();"
                                 />
                             </div>
 
@@ -282,10 +266,25 @@
                                 />
                             </div>
 
-                            <!-- 9. Over/Short -->
+                            <!-- 9. Inventory Sold -->
                             <div class="flex items-center gap-3">
                                 <label class="w-28 text-sm font-semibold text-slate-700 flex-shrink-0">
-                                    9. Over/Short
+                                    9. Inventory Sold
+                                </label>
+                                <input
+                                    type="text"
+                                    id="inventorySold"
+                                    name="inventorySold"
+                                    inputmode="numeric"
+                                    class="eod-input animated-input flex-1"
+                                    oninput="this.value = this.value.replace(/[^0-9]/g, '');"
+                                />
+                            </div>
+
+                            <!-- 10. Over/Short -->
+                            <div class="flex items-center gap-3">
+                                <label class="w-28 text-sm font-semibold text-slate-700 flex-shrink-0">
+                                    10. Over/Short
                                 </label>
                                 <input
                                     type="text"
@@ -293,14 +292,15 @@
                                     name="overShort"
                                     inputmode="decimal"
                                     class="eod-input animated-input flex-1"
-                                    oninput="this.value = this.value.replace(/[^0-9.-]/g, ''); this.value = this.value.replace(/(\..*)\./g, '$1');"
+                                    readonly
+                                    style="background-color: #f1f5f9; cursor: not-allowed;"
                                 />
                             </div>
 
-                            <!-- 10. Comments -->
+                            <!-- 11. Comments -->
                             <div class="eod-form-group mt-3">
                                 <label for="comments" class="block text-sm font-semibold text-slate-700 mb-2">
-                                    10. Comments
+                                    11. Comments
                                 </label>
                                 <textarea
                                     id="comments"
@@ -312,7 +312,7 @@
                             </div>
                         </div>
 
-                        <!-- RIGHT SIDE: DENOMINATIONS ONLY (NAME & DATE ARE AT TOP RIGHT) -->
+                        <!-- RIGHT SIDE: DENOMINATIONS -->
                         <div class="space-y-3.5">
                             <!-- Denominations Card -->
                             <div class="border border-card-border rounded-2xl p-5 bg-slate-50 h-full flex flex-col">
@@ -330,7 +330,7 @@
                                             name="denom100Count"
                                             inputmode="numeric"
                                             class="eod-input animated-input w-20 flex-shrink-0"
-                                            oninput="this.value = this.value.replace(/[^0-9]/g, '');"
+                                            oninput="this.value = this.value.replace(/[^0-9]/g, ''); calculateDenomination(100, 'denom100Count', 'denom100Total');"
                                         />
                                         <span class="text-sm font-semibold text-slate-700 flex-shrink-0">=</span>
                                         <input
@@ -339,7 +339,8 @@
                                             name="denom100Total"
                                             inputmode="decimal"
                                             class="eod-input animated-input flex-1"
-                                            oninput="this.value = this.value.replace(/[^0-9.]/g, ''); this.value = this.value.replace(/(\..*)\./g, '$1');"
+                                            readonly
+                                            style="background-color: #f1f5f9; cursor: not-allowed;"
                                         />
                                     </div>
 
@@ -352,7 +353,7 @@
                                             name="denom50Count"
                                             inputmode="numeric"
                                             class="eod-input animated-input w-20 flex-shrink-0"
-                                            oninput="this.value = this.value.replace(/[^0-9]/g, '');"
+                                            oninput="this.value = this.value.replace(/[^0-9]/g, ''); calculateDenomination(50, 'denom50Count', 'denom50Total');"
                                         />
                                         <span class="text-sm font-semibold text-slate-700 flex-shrink-0">=</span>
                                         <input
@@ -361,7 +362,8 @@
                                             name="denom50Total"
                                             inputmode="decimal"
                                             class="eod-input animated-input flex-1"
-                                            oninput="this.value = this.value.replace(/[^0-9.]/g, ''); this.value = this.value.replace(/(\..*)\./g, '$1');"
+                                            readonly
+                                            style="background-color: #f1f5f9; cursor: not-allowed;"
                                         />
                                     </div>
 
@@ -374,7 +376,7 @@
                                             name="denom20Count"
                                             inputmode="numeric"
                                             class="eod-input animated-input w-20 flex-shrink-0"
-                                            oninput="this.value = this.value.replace(/[^0-9]/g, '');"
+                                            oninput="this.value = this.value.replace(/[^0-9]/g, ''); calculateDenomination(20, 'denom20Count', 'denom20Total');"
                                         />
                                         <span class="text-sm font-semibold text-slate-700 flex-shrink-0">=</span>
                                         <input
@@ -383,7 +385,8 @@
                                             name="denom20Total"
                                             inputmode="decimal"
                                             class="eod-input animated-input flex-1"
-                                            oninput="this.value = this.value.replace(/[^0-9.]/g, ''); this.value = this.value.replace(/(\..*)\./g, '$1');"
+                                            readonly
+                                            style="background-color: #f1f5f9; cursor: not-allowed;"
                                         />
                                     </div>
 
@@ -396,7 +399,7 @@
                                             name="denom10Count"
                                             inputmode="numeric"
                                             class="eod-input animated-input w-20 flex-shrink-0"
-                                            oninput="this.value = this.value.replace(/[^0-9]/g, '');"
+                                            oninput="this.value = this.value.replace(/[^0-9]/g, ''); calculateDenomination(10, 'denom10Count', 'denom10Total');"
                                         />
                                         <span class="text-sm font-semibold text-slate-700 flex-shrink-0">=</span>
                                         <input
@@ -405,7 +408,8 @@
                                             name="denom10Total"
                                             inputmode="decimal"
                                             class="eod-input animated-input flex-1"
-                                            oninput="this.value = this.value.replace(/[^0-9.]/g, ''); this.value = this.value.replace(/(\..*)\./g, '$1');"
+                                            readonly
+                                            style="background-color: #f1f5f9; cursor: not-allowed;"
                                         />
                                     </div>
 
@@ -418,7 +422,7 @@
                                             name="denom5Count"
                                             inputmode="numeric"
                                             class="eod-input animated-input w-20 flex-shrink-0"
-                                            oninput="this.value = this.value.replace(/[^0-9]/g, '');"
+                                            oninput="this.value = this.value.replace(/[^0-9]/g, ''); calculateDenomination(5, 'denom5Count', 'denom5Total');"
                                         />
                                         <span class="text-sm font-semibold text-slate-700 flex-shrink-0">=</span>
                                         <input
@@ -427,7 +431,8 @@
                                             name="denom5Total"
                                             inputmode="decimal"
                                             class="eod-input animated-input flex-1"
-                                            oninput="this.value = this.value.replace(/[^0-9.]/g, ''); this.value = this.value.replace(/(\..*)\./g, '$1');"
+                                            readonly
+                                            style="background-color: #f1f5f9; cursor: not-allowed;"
                                         />
                                     </div>
 
@@ -440,7 +445,7 @@
                                             name="denom1Count"
                                             inputmode="numeric"
                                             class="eod-input animated-input w-20 flex-shrink-0"
-                                            oninput="this.value = this.value.replace(/[^0-9]/g, '');"
+                                            oninput="this.value = this.value.replace(/[^0-9]/g, ''); calculateDenomination(1, 'denom1Count', 'denom1Total');"
                                         />
                                         <span class="text-sm font-semibold text-slate-700 flex-shrink-0">=</span>
                                         <input
@@ -449,7 +454,8 @@
                                             name="denom1Total"
                                             inputmode="decimal"
                                             class="eod-input animated-input flex-1"
-                                            oninput="this.value = this.value.replace(/[^0-9.]/g, ''); this.value = this.value.replace(/(\..*)\./g, '$1');"
+                                            readonly
+                                            style="background-color: #f1f5f9; cursor: not-allowed;"
                                         />
                                     </div>
                                 </div>
@@ -465,7 +471,24 @@
                                         name="totalBills"
                                         inputmode="numeric"
                                         class="eod-input animated-input flex-1"
-                                        oninput="this.value = this.value.replace(/[^0-9]/g, '');"
+                                        readonly
+                                        style="background-color: #f1f5f9; cursor: not-allowed;"
+                                    />
+                                </div>
+
+                                <!-- Total Amount -->
+                                <div class="mt-3 pt-3 border-t border-slate-200 flex items-center gap-3">
+                                    <span class="w-28 text-sm font-bold text-slate-800 flex-shrink-0">
+                                        Total Amount
+                                    </span>
+                                    <input
+                                        type="text"
+                                        id="totalAmount"
+                                        name="totalAmount"
+                                        inputmode="decimal"
+                                        class="eod-input animated-input flex-1"
+                                        readonly
+                                        style="background-color: #f1f5f9; cursor: not-allowed;"
                                     />
                                 </div>
                             </div>
@@ -528,6 +551,104 @@
             if (activeLink) {
                 activeLink.classList.add('nav-link-active');
             }
+        }
+
+        // Calculate Over/Short automatically
+        function calculateOverShort() {
+            const cashInput = document.getElementById('cash');
+            const cardInput = document.getElementById('card');
+            const card1Input = document.getElementById('card1');
+            const exTotalInput = document.getElementById('total');
+            const overShortInput = document.getElementById('overShort');
+            
+            if (!cashInput || !cardInput || !card1Input || !exTotalInput || !overShortInput) {
+                return;
+            }
+            
+            // Get values and convert to numbers
+            const cash = parseFloat(cashInput.value) || 0;
+            const card = parseFloat(cardInput.value) || 0;
+            const card1 = parseFloat(card1Input.value) || 0;
+            const exTotal = parseFloat(exTotalInput.value) || 0;
+            
+            // Calculate: Ex-Total - (Cash + Card + Card1)
+            const difference = exTotal - (cash + card + card1);
+            
+            // Format the result
+            if (difference > 0) {
+                // Positive: show as "+amount over"
+                overShortInput.value = '+' + difference.toFixed(2) + ' over';
+                overShortInput.style.color = '#28a745';
+            } else if (difference < 0) {
+                // Negative: show absolute value as "amount short"
+                const absValue = Math.abs(difference);
+                overShortInput.value = absValue.toFixed(2) + ' short';
+                overShortInput.style.color = '#dc3545';
+            } else {
+                // Zero: show as "0"
+                overShortInput.value = '0';
+                overShortInput.style.color = '#6c757d';
+            }
+        }
+        
+        // Calculate on page load if values exist
+        document.addEventListener('DOMContentLoaded', function() {
+            calculateOverShort();
+            updateTotalBills();
+            updateTotalAmount();
+        });
+
+        // Calculate denomination total automatically
+        function calculateDenomination(denominationValue, countId, totalId) {
+            const countInput = document.getElementById(countId);
+            const totalInput = document.getElementById(totalId);
+            
+            if (!countInput || !totalInput) return;
+            
+            const count = parseInt(countInput.value) || 0;
+            const total = count * denominationValue;
+            
+            totalInput.value = total > 0 ? total.toFixed(2) : '';
+            
+            // Update totals
+            updateTotalBills();
+            updateTotalAmount();
+        }
+
+        // Calculate total bills (sum of all counts)
+        function updateTotalBills() {
+            const totalBillsInput = document.getElementById('totalBills');
+            if (!totalBillsInput) return;
+            
+            const counts = [
+                parseInt(document.getElementById('denom100Count')?.value || 0),
+                parseInt(document.getElementById('denom50Count')?.value || 0),
+                parseInt(document.getElementById('denom20Count')?.value || 0),
+                parseInt(document.getElementById('denom10Count')?.value || 0),
+                parseInt(document.getElementById('denom5Count')?.value || 0),
+                parseInt(document.getElementById('denom1Count')?.value || 0)
+            ];
+            
+            const totalBills = counts.reduce((sum, count) => sum + count, 0);
+            totalBillsInput.value = totalBills > 0 ? totalBills : '';
+        }
+
+        // Calculate total amount (sum of all denomination totals)
+        function updateTotalAmount() {
+            const totalAmountInput = document.getElementById('totalAmount');
+            if (!totalAmountInput) return;
+            
+            const totals = [
+                parseFloat(document.getElementById('denom100Total')?.value || 0),
+                parseFloat(document.getElementById('denom50Total')?.value || 0),
+                parseFloat(document.getElementById('denom20Total')?.value || 0),
+                parseFloat(document.getElementById('denom10Total')?.value || 0),
+                parseFloat(document.getElementById('denom5Total')?.value || 0),
+                parseFloat(document.getElementById('denom1Total')?.value || 0)
+            ];
+            
+            const totalAmount = totals.reduce((sum, total) => sum + total, 0);
+            totalAmountInput.value = totalAmount > 0 ? totalAmount.toFixed(2) : '';
         }
 
     </script>

@@ -10,6 +10,7 @@ from backend.services.face_service import (
     compress_image,
     euclidean_distance
 )
+from backend.utils.timezone_utils import now_et, now_utc_naive, today_start_utc_naive, et_to_utc_naive
 
 bp = Blueprint("timeclock", __name__)
 
@@ -20,6 +21,7 @@ def clock_in_route():
     """Legacy clock-in endpoint (kept for compatibility)"""
     data = request.get_json()
     employee_id = data.get("employee_id")
+    store_id = data.get("store_id")  # Optional store_id for policy check
     tenant_id = g.tenant_id
     
     # Verify employee belongs to this tenant
@@ -27,10 +29,39 @@ def clock_in_route():
     if not employee:
         return jsonify({"error": "Employee not found"}), 404
     
+    # Enforce store-hours access policy (root fix)
+    if store_id or employee.store_id:
+        from backend.utils.store_access_policy import StoreAccessPolicy
+        from backend.models import Store
+        
+        effective_store_id = store_id or employee.store_id
+        store = Store.query.filter_by(tenant_id=tenant_id, name=effective_store_id).first()
+        
+        if store and store.opening_time and store.closing_time:
+            can_clock, reason, metadata = StoreAccessPolicy.can_clock_action(
+                opening_time=store.opening_time,
+                closing_time=store.closing_time,
+                store_timezone=store.timezone
+            )
+            
+            if not can_clock:
+                error_response = {
+                    "error": reason or "Clock-in is not allowed at this time.",
+                    "error_code": metadata.get("error_code", "OUTSIDE_CLOCK_WINDOW") if metadata else "OUTSIDE_CLOCK_WINDOW"
+                }
+                if metadata:
+                    error_response["metadata"] = metadata
+                return jsonify(error_response), 403
+    
+    # Get current time in ET, convert to UTC naive for database storage
+    clock_in_et = now_et()
+    clock_in_utc_naive = et_to_utc_naive(clock_in_et)
+    
     entry = TimeClock(
         tenant_id=tenant_id,
         employee_id=int(employee_id),
-        clock_in=datetime.utcnow(),
+        store_id=store_id or employee.store_id,
+        clock_in=clock_in_utc_naive,
         clock_out=None
     )
     db.session.add(entry)
@@ -49,12 +80,43 @@ def clock_out_route():
     
     try:
         entry = TimeClock.query.filter_by(id=int(entry_id), tenant_id=tenant_id).first()
-        if entry:
-            entry.clock_out = datetime.utcnow()
-            db.session.commit()
-            return jsonify({"ok": True})
-        else:
+        if not entry:
             return jsonify({"error": "Invalid or already clocked out entry"}), 400
+        
+        if entry.clock_out:
+            return jsonify({"error": "Entry already clocked out"}), 400
+        
+        # Enforce store-hours access policy (root fix)
+        if entry.store_id:
+            from backend.utils.store_access_policy import StoreAccessPolicy
+            from backend.models import Store
+            
+            store = Store.query.filter_by(tenant_id=tenant_id, name=entry.store_id).first()
+            
+            if store and store.opening_time and store.closing_time:
+                can_clock, reason, metadata = StoreAccessPolicy.can_clock_action(
+                    opening_time=store.opening_time,
+                    closing_time=store.closing_time,
+                    store_timezone=store.timezone
+                )
+                
+                if not can_clock:
+                    error_response = {
+                        "error": reason or "Clock-out is not allowed at this time.",
+                        "error_code": metadata.get("error_code", "OUTSIDE_CLOCK_WINDOW") if metadata else "OUTSIDE_CLOCK_WINDOW"
+                    }
+                    if metadata:
+                        error_response["metadata"] = metadata
+                    return jsonify(error_response), 403
+        
+        # Get current time in ET, convert to UTC naive for database storage
+        clock_out_et = now_et()
+        clock_out_utc_naive = et_to_utc_naive(clock_out_et)
+        
+        entry.clock_out = clock_out_utc_naive
+        entry.clock_out_type = "MANUAL"
+        db.session.commit()
+        return jsonify({"ok": True})
     except:
         return jsonify({"error": "Invalid entry_id format"}), 400
 
@@ -154,8 +216,8 @@ def clock_in_face():
                 employee.set_face_descriptors(existing_descriptors)
                 db.session.commit()
         
-        # Check if employee is already clocked in today
-        today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+        # Check if employee is already clocked in today (using UTC naive for database query)
+        today_start = today_start_utc_naive()
         
         existing_entry = TimeClock.query.filter(
             TimeClock.tenant_id == tenant_id,
@@ -176,6 +238,30 @@ def clock_in_face():
                 "clock_in_time": clock_in_iso
             }), 400
         
+        # Enforce store-hours access policy (root fix)
+        if store_id:
+            from backend.utils.store_access_policy import StoreAccessPolicy
+            from backend.models import Store
+            
+            store = Store.query.filter_by(tenant_id=tenant_id, name=store_id).first()
+            
+            if store and store.opening_time and store.closing_time:
+                can_clock, reason, metadata = StoreAccessPolicy.can_clock_action(
+                    opening_time=store.opening_time,
+                    closing_time=store.closing_time,
+                    store_timezone=store.timezone
+                )
+                
+                if not can_clock:
+                    error_response = {
+                        "success": False,
+                        "error": reason or "Clock-in is not allowed at this time.",
+                        "error_code": metadata.get("error_code", "OUTSIDE_CLOCK_WINDOW") if metadata else "OUTSIDE_CLOCK_WINDOW"
+                    }
+                    if metadata:
+                        error_response["metadata"] = metadata
+                    return jsonify(error_response), 403
+        
         # Compress face image
         compressed_image = compress_image(face_image, max_size=400) if face_image else None
         
@@ -193,13 +279,15 @@ def clock_in_face():
             # Update storage usage
             update_storage_usage(tenant_id, image_size)
         
-        # Create clock-in entry
+        # Create clock-in entry (ET time converted to UTC naive for storage)
+        clock_in_et = now_et()
+        clock_in_time = et_to_utc_naive(clock_in_et)
         entry = TimeClock(
             tenant_id=tenant_id,
             employee_id=employee_id,
             employee_name=employee_name,
             store_id=store_id,
-            clock_in=datetime.utcnow(),
+            clock_in=clock_in_time,
             clock_out=None,
             clock_in_face_image=compressed_image,
             clock_in_confidence=confidence
@@ -207,6 +295,41 @@ def clock_in_face():
         
         db.session.add(entry)
         db.session.commit()
+        
+        # Check if employee clocked in late (after opening time) and create alert
+        # Use ET time for comparison with store hours
+        if store_id:
+            from backend.models import Store, create_alert
+            try:
+                store = Store.query.filter_by(tenant_id=tenant_id, name=store_id).first()
+                if store and store.opening_time and store.manager_username:
+                    try:
+                        # Compare in ET timezone
+                        opening_hour, opening_minute = map(int, store.opening_time.split(':'))
+                        opening_time_today_et = clock_in_et.replace(hour=opening_hour, minute=opening_minute, second=0, microsecond=0)
+                        
+                        # Check if clock-in is after opening time (in ET)
+                        if clock_in_et > opening_time_today_et:
+                            # Calculate how many minutes late
+                            minutes_late = int((clock_in_et - opening_time_today_et).total_seconds() / 60)
+                            
+                            # Create alert for manager (format time in ET)
+                            create_alert(
+                                tenant_id=tenant_id,
+                                store_id=store_id,
+                                manager_username=store.manager_username,
+                                alert_type='late_clock_in',
+                                title=f'Late Clock-In: {employee_name}',
+                                message=f'{employee_name} clocked in {minutes_late} minute{"s" if minutes_late != 1 else ""} late at {clock_in_et.strftime("%H:%M")} ET. Store opening time is {store.opening_time} ET.',
+                                employee_id=employee_id,
+                                employee_name=employee_name
+                            )
+                    except (ValueError, AttributeError) as e:
+                        # If time parsing fails, skip alert creation
+                        print(f"Warning: Could not create late clock-in alert: {e}")
+            except Exception as e:
+                # Don't fail clock-in if alert creation fails
+                print(f"Warning: Error creating alert: {e}")
         
         clock_in_iso = entry.clock_in.isoformat()
         if not clock_in_iso.endswith('Z') and entry.clock_in.tzinfo is None:
@@ -313,8 +436,8 @@ def clock_out_face():
                 employee.set_face_descriptors(existing_descriptors)
                 db.session.commit()
         
-        # Find active clock-in entry for today
-        today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+        # Find active clock-in entry for today (using UTC naive for database query)
+        today_start = today_start_utc_naive()
         
         active_entry = TimeClock.query.filter(
             TimeClock.tenant_id == tenant_id,
@@ -329,6 +452,84 @@ def clock_out_face():
                 "error": f"{employee_name} is not clocked in today. Please clock in first.",
                 "employee_name": employee_name
             }), 400
+        
+        # Enforce store-hours access policy (root fix)
+        if store_id:
+            from backend.utils.store_access_policy import StoreAccessPolicy
+            from backend.models import Store
+            
+            store = Store.query.filter_by(tenant_id=tenant_id, name=store_id).first()
+            
+            if store and store.opening_time and store.closing_time:
+                # Check if clock-out is allowed
+                can_clock, reason, metadata = StoreAccessPolicy.can_clock_action(
+                    opening_time=store.opening_time,
+                    closing_time=store.closing_time,
+                    store_timezone=store.timezone
+                )
+                
+                if not can_clock:
+                    # Check if we should auto clock-out instead
+                    auto_clockout_time = StoreAccessPolicy.auto_clock_out_at(
+                        closing_time=store.closing_time,
+                        store_timezone=store.timezone
+                    )
+                    
+                    if auto_clockout_time:
+                        # Get current time in ET
+                        now_et_time = now_et()
+                        
+                        # Convert auto_clockout_time to ET if needed (it should already be in store timezone/ET)
+                        if auto_clockout_time.tzinfo is None:
+                            # If naive, assume it's in store timezone (ET)
+                            from backend.utils.timezone_utils import get_app_timezone
+                            auto_clockout_et = get_app_timezone().localize(auto_clockout_time)
+                        else:
+                            # Convert to ET
+                            from backend.utils.timezone_utils import get_app_timezone
+                            auto_clockout_et = auto_clockout_time.astimezone(get_app_timezone())
+                        
+                        # If it's past auto clock-out time, auto clock out
+                        if now_et_time >= auto_clockout_et:
+                            # Convert to UTC naive for database storage
+                            clock_out_time = et_to_utc_naive(auto_clockout_et)
+                            clock_in_time = active_entry.clock_in
+                            hours_worked = (clock_out_time - clock_in_time).total_seconds() / 3600
+                            
+                            active_entry.clock_out = clock_out_time
+                            active_entry.clock_out_type = "AUTO"
+                            active_entry.hours_worked = round(hours_worked, 2)
+                            db.session.commit()
+                            
+                            clock_in_iso = clock_in_time.isoformat()
+                            if not clock_in_iso.endswith('Z') and clock_in_time.tzinfo is None:
+                                clock_in_iso += 'Z'
+                            
+                            clock_out_iso = clock_out_time.isoformat()
+                            if not clock_out_iso.endswith('Z') and clock_out_time.tzinfo is None:
+                                clock_out_iso += 'Z'
+                            
+                            return jsonify({
+                                "success": True,
+                                "auto_clockout": True,
+                                "entry_id": str(active_entry.id),
+                                "employee_id": str(employee_id),
+                                "employee_name": employee_name,
+                                "clock_in_time": clock_in_iso,
+                                "clock_out_time": clock_out_iso,
+                                "hours_worked": round(hours_worked, 2),
+                                "message": f"Auto clocked out at {auto_clockout_et.strftime('%H:%M')} ET (30 minutes after closing time {store.closing_time} ET)"
+                            }), 200
+                    
+                    # Not past auto clock-out time, deny manual clock-out
+                    error_response = {
+                        "success": False,
+                        "error": reason or "Clock-out is not allowed at this time.",
+                        "error_code": metadata.get("error_code", "OUTSIDE_CLOCK_WINDOW") if metadata else "OUTSIDE_CLOCK_WINDOW"
+                    }
+                    if metadata:
+                        error_response["metadata"] = metadata
+                    return jsonify(error_response), 403
         
         # Compress face image
         compressed_image = compress_image(face_image, max_size=400) if face_image else None
@@ -351,12 +552,14 @@ def clock_out_face():
             if size_change != 0:
                 update_storage_usage(tenant_id, size_change)
         
-        # Update entry with clock-out time
-        clock_out_time = datetime.utcnow()
+        # Update entry with clock-out time (ET time converted to UTC naive for storage)
+        clock_out_et = now_et()
+        clock_out_time = et_to_utc_naive(clock_out_et)
         clock_in_time = active_entry.clock_in
         hours_worked = (clock_out_time - clock_in_time).total_seconds() / 3600
         
         active_entry.clock_out = clock_out_time
+        active_entry.clock_out_type = "MANUAL"
         active_entry.clock_out_face_image = compressed_image
         active_entry.clock_out_confidence = confidence
         active_entry.hours_worked = round(hours_worked, 2)
@@ -402,7 +605,7 @@ def get_today_entries():
         if not store_id:
             return jsonify({"error": "store_id is required"}), 400
         
-        today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+        today_start = today_start_utc_naive()
         tomorrow_start = today_start + timedelta(days=1)
         
         entries = TimeClock.query.filter(
@@ -444,7 +647,8 @@ def get_history():
         if not store_id:
             return jsonify({"error": "store_id is required"}), 400
         
-        start_date = datetime.utcnow() - timedelta(days=days)
+        # Use UTC naive for database queries
+        start_date = now_utc_naive() - timedelta(days=days)
         
         entries = TimeClock.query.filter(
             TimeClock.tenant_id == tenant_id,
@@ -481,7 +685,8 @@ def get_employee_history(employee_id):
     try:
         tenant_id = g.tenant_id
         days = int(request.args.get("days", 90))
-        start_date = datetime.utcnow() - timedelta(days=days)
+        # Use UTC naive for database queries
+        start_date = now_utc_naive() - timedelta(days=days)
         
         # Verify employee belongs to this tenant
         employee = Employee.query.filter_by(id=int(employee_id), tenant_id=tenant_id).first()

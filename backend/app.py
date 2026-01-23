@@ -157,6 +157,8 @@ def create_app():
     from backend.routes.admins import bp as admins_bp
     from backend.routes.tenants import bp as tenants_bp
     from backend.routes.billings import bp as billings_bp
+    from backend.routes.auto_clockout import bp as auto_clockout_bp
+    from backend.routes.alerts import bp as alerts_bp
 
     # Register error handlers BEFORE blueprints to ensure they catch all errors
     # Global error handler to ensure all API errors return JSON
@@ -238,6 +240,8 @@ def create_app():
     app.register_blueprint(managers_bp, url_prefix="/api/managers")
     app.register_blueprint(admins_bp, url_prefix="/api/admins")
     app.register_blueprint(billings_bp, url_prefix="/api/billings")
+    app.register_blueprint(auto_clockout_bp, url_prefix="/api/auto-clockout")
+    app.register_blueprint(alerts_bp, url_prefix="/api/alerts")
     
     # Apply rate limiting to login endpoints
     # Flask-Limiter will automatically apply rate limits based on decorators
@@ -468,6 +472,13 @@ def create_app():
         from backend.migrations.add_device_type_to_inventory import migrate
         migrate()
     
+    # CLI command to add inventory_sold column to EOD table
+    @app.cli.command("add-inventory-sold-to-eod")
+    def add_inventory_sold_to_eod_command():
+        """Add inventory_sold column to eod table"""
+        from backend.migrations.add_inventory_sold_to_eod import migrate
+        migrate()
+    
     # CLI command to add default inventory to existing stores
     @app.cli.command("add-inventory-to-stores")
     def add_inventory_to_stores_command():
@@ -524,6 +535,20 @@ def create_app():
     def add_admin_fields_command():
         """Add is_admin and regions columns to managers table"""
         from backend.migrations.add_admin_fields_to_managers import migrate
+        migrate()
+    
+    # CLI command to add store timings
+    @app.cli.command("add-store-timings")
+    def add_store_timings_command():
+        """Add opening_time and closing_time columns to stores table"""
+        from backend.migrations.add_store_timings import migrate
+        migrate()
+    
+    # CLI command to create alerts table
+    @app.cli.command("create-alerts-table")
+    def create_alerts_table_command():
+        """Create the alerts table if it doesn't exist"""
+        from backend.migrations.add_alerts_table import migrate
         migrate()
 
     return app
